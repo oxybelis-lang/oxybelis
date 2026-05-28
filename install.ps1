@@ -88,7 +88,7 @@ if ($LocalBuild) {
     }
 } else {
     # Download from GitHub releases
-    $repo = 'oxybelis/oxybelis'  # Update to match your repo
+    $repo = 'oxybelis-lang/oxybelis'
     $base = "https://github.com/$repo/releases/download/v$Version"
     $archive = "oxybelis-x86_64-pc-windows-msvc.zip"
     $url = "$base/$archive"

@@ -14,11 +14,11 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="A statically-typed, Python-inspired language that transpiles to C++"
 arch=('x86_64' 'aarch64')
-url="https://github.com/oxybelis/oxybelis"
+url="https://github.com/oxybelis-lang/oxybelis"
 license=('GPL3')
 depends=('gcc-libs' 'glibc')
-source_x86_64=("${pkgname}-${pkgver}-x86_64::https://github.com/oxybelis/oxybelis/releases/download/v${pkgver}/oxybelis-x86_64-unknown-linux-gnu.tar.gz")
-source_aarch64=("${pkgname}-${pkgver}-aarch64::https://github.com/oxybelis/oxybelis/releases/download/v${pkgver}/oxybelis-aarch64-unknown-linux-gnu.tar.gz")
+source_x86_64=("${pkgname}-${pkgver}-x86_64::https://github.com/oxybelis-lang/oxybelis/releases/download/v${pkgver}/oxybelis-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64::https://github.com/oxybelis-lang/oxybelis/releases/download/v${pkgver}/oxybelis-aarch64-unknown-linux-gnu.tar.gz")
 sha256sums_x86_64=('0000000000000000000000000000000000000000000000000000000000000000')
 sha256sums_aarch64=('0000000000000000000000000000000000000000000000000000000000000000')
 

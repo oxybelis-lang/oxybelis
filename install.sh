@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────
-REPO="oxybelis/oxybelis"       # GitHub repo
+REPO="oxybelis-lang/oxybelis"
 VERSION=""
 INSTALL_DIR=""
 LOCAL_BUILD=0

@@ -22,7 +22,7 @@ curl -fsSL https://oxybelis.dev/install.sh | sh
 Installs native `oxybelis`, `ox-fmt`, and `ox-lsp` binaries to `~/.oxybelis/bin/` and adds them to PATH.
 
 Or via package managers (once submitted):
-- Homebrew: `brew tap oxybelis/oxybelis && brew install oxybelis`
+- Homebrew: `brew tap oxybelis-lang/oxybelis && brew install oxybelis`
 - Scoop: `scoop install oxybelis`
 - AUR: `paru -S oxybelis`
 

@@ -4,7 +4,7 @@
 # Oxybelis – a statically-typed, Python-inspired language that transpiles to C++
 #
 # Install:
-#   brew tap oxybelis/oxybelis
+#   brew tap oxybelis-lang/oxybelis
 #   brew install oxybelis
 #
 # Or from this file directly:
@@ -12,18 +12,18 @@
 
 class Oxybelis < Formula
   desc "Statically-typed language that transpiles to C++"
-  homepage "https://github.com/oxybelis/oxybelis"
+  homepage "https://github.com/oxybelis-lang/oxybelis"
   license "GPL-3.0-only"
   version "0.1.0"
 
   # ── Linux x86_64 ──────────────────────────────────────────
   on_linux do
     on_intel do
-      url "https://github.com/oxybelis/oxybelis/releases/download/v#{version}/oxybelis-x86_64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/oxybelis-lang/oxybelis/releases/download/v#{version}/oxybelis-x86_64-unknown-linux-gnu.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # UPDATE
     end
     on_arm do
-      url "https://github.com/oxybelis/oxybelis/releases/download/v#{version}/oxybelis-aarch64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/oxybelis-lang/oxybelis/releases/download/v#{version}/oxybelis-aarch64-unknown-linux-gnu.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # UPDATE
     end
   end
@@ -31,11 +31,11 @@ class Oxybelis < Formula
   # ── macOS x86_64 ──────────────────────────────────────────
   on_macos do
     on_intel do
-      url "https://github.com/oxybelis/oxybelis/releases/download/v#{version}/oxybelis-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/oxybelis-lang/oxybelis/releases/download/v#{version}/oxybelis-x86_64-apple-darwin.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # UPDATE
     end
     on_arm do
-      url "https://github.com/oxybelis/oxybelis/releases/download/v#{version}/oxybelis-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/oxybelis-lang/oxybelis/releases/download/v#{version}/oxybelis-aarch64-apple-darwin.tar.gz"
       sha256 "0000000000000000000000000000000000000000000000000000000000000000" # UPDATE
     end
   end

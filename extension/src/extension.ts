@@ -13,6 +13,8 @@ function findBinary(extensionPath: string, name: string): string | null {
     path.join(extensionPath, '..', 'dist', 'release', name),
     path.join(extensionPath, 'bin', name + '.exe'),
     path.join(extensionPath, 'bin', name),
+    path.join(process.env.LOCALAPPDATA || '', 'oxybelis', 'bin', name + '.exe'),
+    path.join(process.env.HOME || process.env.USERPROFILE || '', '.oxybelis', 'bin', name),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
