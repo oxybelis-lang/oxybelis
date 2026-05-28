@@ -1,0 +1,154 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Oxybelis",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#classes"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.ox",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.ox",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.ox"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.ox"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.ox",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.ox",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.ox",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.ox",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.ox",
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.ox",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.ox",
+          "match": "\\b(fn|if|elif|else|for|while|match|return|break|continue|let|var|pub)\\b"
+        },
+        {
+          "name": "keyword.other.ox",
+          "match": "\\b(class|self)\\b"
+        },
+        {
+          "name": "constant.language.ox",
+          "match": "\\b(true|false|None|Some)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.ox",
+          "match": "\\b(int|float|bool|str|void|List|Map|Option)\\b"
+        },
+        {
+          "name": "support.type.generic.ox",
+          "match": "\\b[A-Z][a-zA-Z0-9]*(?=<)"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.ox",
+          "match": "\\b([a-z_][a-z0-9_]*)\\s*(?=\\()"
+        },
+        {
+          "name": "support.function.builtin.ox",
+          "match": "\\b(print|len|push|pop|range|contains|str|sqrt|abs|pow|sin|cos|min|max)\\b"
+        }
+      ]
+    },
+    "classes": {
+      "patterns": [
+        {
+          "name": "entity.name.class.ox",
+          "match": "\\b([A-Z][a-zA-Z0-9]*)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.ox",
+          "match": "(\\+|-|\\*|/|%|==|!=|<|>|<=|>=|&&|\\|\\||!|=|\\+=|-=|\\*=|/=|\\.\\.)"
+        },
+        {
+          "name": "punctuation.separator.ox",
+          "match": "(;|,|:|->|\\?)"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.ox"
+}

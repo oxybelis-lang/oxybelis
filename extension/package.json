@@ -1,0 +1,150 @@
+{
+  "name": "oxybelis-language",
+  "displayName": "Oxybelis Language Support",
+  "description": "Language support for Oxybelis - a statically-typed, Python-inspired language that transpiles to C++",
+  "version": "0.1.0",
+  "publisher": "oxybelis",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oxybelis/oxybelis"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "oxybelis",
+    "ox",
+    "language",
+    "compiler",
+    "python",
+    "c++",
+    "transpiler"
+  ],
+  "activationEvents": [
+    "onLanguage:oxybelis"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "oxybelis",
+        "aliases": [
+          "Oxybelis",
+          "ox"
+        ],
+        "extensions": [
+          ".ox"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon.svg",
+          "dark": "./images/icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "oxybelis",
+        "scopeName": "source.ox",
+        "path": "./syntaxes/oxybelis.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Oxybelis",
+      "properties": {
+        "oxybelis.lsp.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Oxybelis language server"
+        },
+        "oxybelis.lsp.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python executable (used when binary not found)"
+        },
+        "oxybelis.lsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to ox-lsp binary (auto-detected if empty)"
+        },
+        "oxybelis.typeCheck.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable type checking on save"
+        },
+        "oxybelis.formatter.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable code formatting"
+        },
+        "oxybelis.compiler.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python for running compiler (used when binary not found)"
+        },
+        "oxybelis.compiler.oxybelisPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to oxybelis binary (auto-detected if empty)"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "oxybelis.transpile",
+        "title": "Oxybelis: Transpile to C++"
+      },
+      {
+        "command": "oxybelis.build",
+        "title": "Oxybelis: Build (transpile + compile)"
+      },
+      {
+        "command": "oxybelis.check",
+        "title": "Oxybelis: Type check"
+      },
+      {
+        "command": "oxybelis.highlight",
+        "title": "Oxybelis: Show syntax highlighting"
+      },
+      {
+        "command": "oxybelis.format",
+        "title": "Oxybelis: Format document"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "oxybelis.transpile",
+        "key": "ctrl+shift+b",
+        "when": "editorLangId == oxybelis"
+      },
+      {
+        "command": "oxybelis.format",
+        "key": "ctrl+shift+f",
+        "when": "editorLangId == oxybelis"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}

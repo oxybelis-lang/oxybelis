@@ -1,0 +1,15 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#ff6b6b" opacity="0.1"/>
+  
+  <!-- Outer ring -->
+  <circle cx="64" cy="64" r="60" fill="none" stroke="#ff6b6b" stroke-width="2"/>
+  
+  <!-- "ox" text -->
+  <text x="64" y="75" font-family="monospace" font-size="48" font-weight="bold" 
+        text-anchor="middle" fill="#ff6b6b">ox</text>
+  
+  <!-- Language indicator -->
+  <text x="64" y="105" font-family="monospace" font-size="10" font-weight="bold"
+        text-anchor="middle" fill="#666" opacity="0.6">OXYBELIS</text>
+</svg>

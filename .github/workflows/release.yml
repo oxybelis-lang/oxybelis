@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            ext: ""
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            ext: ""
+          - os: macos-13
+            target: x86_64-apple-darwin
+            ext: ""
+          - os: macos-14
+            target: aarch64-apple-darwin
+            ext: ""
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Nuitka
+        run: pip install nuitka
+
+      - name: Build binaries
+        run: |
+          python -m nuitka --onefile --assume-yes-for-downloads oxybelis.py
+          python -m nuitka --onefile --assume-yes-for-downloads ox_fmt.py
+          python -m nuitka --onefile --assume-yes-for-downloads ox_lsp.py
+
+      - name: Rename binaries
+        shell: bash
+        run: |
+          mv oxybelis${{ matrix.ext }}  oxybelis${{ matrix.ext }}
+          mv ox_fmt${{ matrix.ext }}    ox-fmt${{ matrix.ext }}
+          mv ox_lsp${{ matrix.ext }}    ox-lsp${{ matrix.ext }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar czf "oxybelis-${{ matrix.target }}.tar.gz" \
+            oxybelis ox-fmt ox-lsp
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          7z a "oxybelis-${{ matrix.target }}.zip" \
+            oxybelis.exe ox-fmt.exe ox-lsp.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: oxybelis-${{ matrix.target }}
+          path: oxybelis-${{ matrix.target }}.*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            oxybelis-*/oxybelis-*.tar.gz
+            oxybelis-*/oxybelis-*.zip
+          generate_release_notes: true

@@ -1,0 +1,25 @@
+{
+  "version": "0.1.0",
+  "description": "Oxybelis – a statically-typed, Python-inspired language that transpiles to C++",
+  "homepage": "https://github.com/oxybelis/oxybelis",
+  "license": "GPL-3.0-only",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/oxybelis/oxybelis/releases/download/v0.1.0/oxybelis-x86_64-pc-windows-msvc.zip",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "bin": [
+    "oxybelis.exe",
+    "ox-fmt.exe",
+    "ox-lsp.exe"
+  ],
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/oxybelis/oxybelis/releases/download/v$version/oxybelis-x86_64-pc-windows-msvc.zip"
+      }
+    }
+  }
+}

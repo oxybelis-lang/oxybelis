@@ -1,0 +1,29 @@
+# Maintainer: Your Name <your@email.com>
+# Contributor: You <your@email.com>
+#
+# Oxybelis – a statically-typed, Python-inspired language that transpiles to C++
+#
+# Install from AUR:
+#   paru -S oxybelis
+#   yay  -S oxybelis
+# Or build locally:
+#   cd contrib/aur && makepkg -si
+
+pkgname=oxybelis
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A statically-typed, Python-inspired language that transpiles to C++"
+arch=('x86_64' 'aarch64')
+url="https://github.com/oxybelis/oxybelis"
+license=('GPL3')
+depends=('gcc-libs' 'glibc')
+source_x86_64=("${pkgname}-${pkgver}-x86_64::https://github.com/oxybelis/oxybelis/releases/download/v${pkgver}/oxybelis-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64::https://github.com/oxybelis/oxybelis/releases/download/v${pkgver}/oxybelis-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('0000000000000000000000000000000000000000000000000000000000000000')
+sha256sums_aarch64=('0000000000000000000000000000000000000000000000000000000000000000')
+
+package() {
+    install -Dm755 "${srcdir}/${pkgname}-${pkgver}-x86_64/oxybelis"  "${pkgdir}/usr/bin/oxybelis"
+    install -Dm755 "${srcdir}/${pkgname}-${pkgver}-x86_64/ox-fmt"    "${pkgdir}/usr/bin/ox-fmt"
+    install -Dm755 "${srcdir}/${pkgname}-${pkgver}-x86_64/ox-lsp"    "${pkgdir}/usr/bin/ox-lsp"
+}

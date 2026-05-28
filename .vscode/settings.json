@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "*.ox": "oxybelis"
+    },
+    "[oxybelis]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.formatOnSave": true
+    },
+    "oxybelis.lsp.enable": true,
+    "oxybelis.lsp.pythonPath": "python",
+    "oxybelis.lsp.serverPath": "../ox_lsp.py",
+    "oxybelis.compiler.pythonPath": "python",
+    "oxybelis.compiler.oxybelisPath": "../oxybelis.py",
+    "oxybelis.typeCheck.enable": true,
+    "oxybelis.formatter.enable": true
+}

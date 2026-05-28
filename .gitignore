@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+node_modules/
+.vscode/node_modules/
+
+# Generated transpiler output
+*.exe
+*.o
+*.cpp
+
+# Extension compiled output
+extension/out/
+
+# VS Code extension package
+*.vsix
+
+# Build artifacts
+dist/
+*.egg-info/

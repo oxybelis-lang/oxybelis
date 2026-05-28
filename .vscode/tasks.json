@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile Oxybelis Extension",
+            "type": "npm",
+            "script": "compile",
+            "path": "extension",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$tsc"]
+        },
+        {
+            "label": "Watch Oxybelis Extension",
+            "type": "npm",
+            "script": "watch",
+            "path": "extension",
+            "isBackground": true,
+            "problemMatcher": "$tsc-watch"
+        }
+    ]
+}

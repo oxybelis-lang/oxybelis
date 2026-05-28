@@ -1,0 +1,12 @@
+out/test/**
+src/test/**
+src/**/*.test.ts
+.src/
+**/*.map
+**/*.ts
+!**/*.d.ts
+.git
+.gitignore
+*.vsix
+**/.eslintrc
+**/node_modules/**
