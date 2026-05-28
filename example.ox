@@ -7,7 +7,7 @@ fn greet(name: str) -> str {
     return "Hello, " + name + "!";
 }
 
-fn factorial(n: int) -> ist {
+fn factorial(n: int) -> int {
     if n <= 1 {
         return 1;
     }
