@@ -102,6 +102,10 @@
     },
     "commands": [
       {
+        "command": "oxybelis.hello",
+        "title": "Oxybelis: Hello (test activation)"
+      },
+      {
         "command": "oxybelis.transpile",
         "title": "Oxybelis: Transpile to C++"
       },
