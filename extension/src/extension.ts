@@ -122,7 +122,7 @@ export async function activate(context: vscode.ExtensionContext) {
         async provideDocumentFormattingEdits(doc: vscode.TextDocument): Promise<vscode.TextEdit[]> {
           log(`Formatting: ${doc.fileName}`);
           try {
-            const formatted = execFileSync(oxfmtBin, [doc.fileName], { encoding: 'utf-8', timeout: 15000 });
+            const formatted = execFileSync(oxfmtBin, [doc.fileName, '--stdout'], { encoding: 'utf-8', timeout: 15000 });
             const range = doc.validateRange(new vscode.Range(0, 0, doc.lineCount, 0));
             log('Format OK');
             return [vscode.TextEdit.replace(range, formatted)];

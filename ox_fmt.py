@@ -447,6 +447,8 @@ def cli():
     p.add_argument('source', help='Source file (.ox)')
     p.add_argument('--check', action='store_true',
                    help='Check formatting without modifying (exit 1 if unformatted)')
+    p.add_argument('--stdout', action='store_true',
+                   help='Print formatted source to stdout instead of modifying file')
     args = p.parse_args()
 
     with open(args.source, encoding='utf-8') as f:
@@ -455,6 +457,10 @@ def cli():
     formatted = format_source(src)
     trimmed_src = src.rstrip('\n')
     trimmed_fmt = formatted.rstrip('\n')
+
+    if args.stdout:
+        sys.stdout.write(formatted)
+        return
 
     if args.check:
         if trimmed_src != trimmed_fmt:
