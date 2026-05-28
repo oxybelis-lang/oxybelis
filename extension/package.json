@@ -2,7 +2,7 @@
   "name": "oxybelis-language",
   "displayName": "Oxybelis Language Support",
   "description": "Language support for Oxybelis - a statically-typed, Python-inspired language that transpiles to C++",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "oxybelis",
   "repository": {
     "type": "git",

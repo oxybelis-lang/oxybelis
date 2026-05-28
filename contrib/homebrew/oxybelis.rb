@@ -14,7 +14,7 @@ class Oxybelis < Formula
   desc "Statically-typed language that transpiles to C++"
   homepage "https://github.com/oxybelis-lang/oxybelis"
   license "GPL-3.0-only"
-  version "0.1.0"
+  version "0.2.0"
 
   # ── Linux x86_64 ──────────────────────────────────────────
   on_linux do

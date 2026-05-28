@@ -10,7 +10,7 @@
 #   cd contrib/aur && makepkg -si
 
 pkgname=oxybelis
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="A statically-typed, Python-inspired language that transpiles to C++"
 arch=('x86_64' 'aarch64')
