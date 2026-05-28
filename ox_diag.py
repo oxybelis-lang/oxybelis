@@ -192,37 +192,36 @@ def _render_span(span: Span, src: SourceFile, lines: List[str],
         text = src.line_text(span.start_line)
         if text is not None:
             sn = str(span.start_line)
-            pad = ' ' * (len(sn) + 2)
-            lines.append(f'{ins}{Style.GRAY}{sn:>4}{R} | {text}')
-            arr = [' '] * (len(sn) + 1)
+            lines.append(f'{ins}{Style.GRAY}{sn}{R} | {text}')
+            arr = [' '] * len(sn)
             for ci, ch in enumerate(text, 1):
                 arr.append('^' if span.start_col <= ci < span.end_col else ' ')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{pad}{ac}{"".join(arr)}{R}')
+            lines.append(f'{ins}{Style.GRAY}  |{R}{"".join(arr)}{ac}{R}')
             lines.append(f'{ins}  |')
 
     elif span.start_line < span.end_line and span.start_line > 0:
         text = src.line_text(span.start_line)
         if text:
             sn = str(span.start_line)
-            lines.append(f'{ins}{Style.GRAY}{sn:>4}{R} | {text}')
-            arr = [' '] * (len(sn) + 1)
+            lines.append(f'{ins}{Style.GRAY}{sn}{R} | {text}')
+            arr = [' '] * len(sn)
             for ci, _ in enumerate(text, 1):
                 arr.append('^' if ci >= span.start_col else ' ')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{"".join(arr)}{ac}^^^{R}')
+            lines.append(f'{ins}{Style.GRAY}  |{R}{ac}{"".join(arr)}^^^{R}')
 
         for ln in range(span.start_line + 1, span.end_line):
             t = src.line_text(ln)
             if t is not None:
-                lines.append(f'{ins}{Style.GRAY}{ln:>4}{R} | {ac}{t}{R}')
+                lines.append(f'{ins}{Style.GRAY}{ln}{R} | {ac}{t}{R}')
 
         text = src.line_text(span.end_line)
         if text:
             en = str(span.end_line)
-            arr = [' '] * (len(en) + 1)
+            arr = [' '] * len(en)
             for ci, _ in enumerate(text, 1):
                 arr.append('^' if ci <= span.end_col else ' ')
-            lines.append(f'{ins}{Style.GRAY}{en:>4}{R} | {text}')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{"".join(arr)}{ac}^^^{R}')
+            lines.append(f'{ins}{Style.GRAY}{en}{R} | {text}')
+            lines.append(f'{ins}{Style.GRAY}  |{R}{ac}{"".join(arr)}^^^{R}')
 
 
 # ═══════════════════════════════════════════════════════════════

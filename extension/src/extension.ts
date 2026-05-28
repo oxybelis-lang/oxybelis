@@ -154,7 +154,7 @@ function runTypeCheck(fileName: string, binPath: string) {
   const uri = vscode.Uri.file(fileName);
   diagCollection.set(uri, undefined); // clear previous
   try {
-    const out = execFileSync(binPath, [fileName, '--check'], { encoding: 'utf-8', timeout: 30000 });
+    const out = execFileSync(binPath, ['check', fileName], { encoding: 'utf-8', timeout: 30000 });
     log(`Check passed: ${fileName}`);
     vscode.window.showInformationMessage('No errors found');
   } catch (e: any) {
