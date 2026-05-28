@@ -92,6 +92,11 @@
           "type": "string",
           "default": "",
           "description": "Path to oxybelis binary (auto-detected if empty)"
+        },
+        "oxybelis.formatter.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to ox-fmt binary (auto-detected if empty)"
         }
       }
     },

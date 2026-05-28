@@ -19,3 +19,4 @@ extension/out/
 # Build artifacts
 dist/
 *.egg-info/
+.vscode/
