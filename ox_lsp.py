@@ -36,37 +36,38 @@ class LSPMessage:
 
 class LSPConnection:
     def __init__(self):
-        self._buf = ''
+        self._buf = b''
         self._content_length = 0
 
     def read_message(self) -> Optional[LSPMessage]:
         while True:
-            if '\r\n\r\n' in self._buf:
-                header, _, rest = self._buf.partition('\r\n\r\n')
+            if self._content_length == 0 and b'\r\n\r\n' in self._buf:
+                header, _, rest = self._buf.partition(b'\r\n\r\n')
                 self._buf = rest
-                for line in header.split('\r\n'):
+                for line in header.decode('ascii').split('\r\n'):
                     if line.lower().startswith('content-length:'):
                         self._content_length = int(line.split(':')[1].strip())
-                if self._content_length > 0 and len(rest) >= self._content_length:
-                    raw = rest[:self._content_length]
-                    self._buf = rest[self._content_length:]
-                    self._content_length = 0
-                    try:
-                        msg = json.loads(raw)
-                        return LSPMessage(
-                            method=msg.get('method', ''),
-                            params=msg.get('params', {}),
-                            id=msg.get('id'),
-                            result=msg.get('result'),
-                            error=msg.get('error'),
-                        )
-                    except json.JSONDecodeError:
-                        return None
-                return None
+
+            if self._content_length > 0 and len(self._buf) >= self._content_length:
+                raw = self._buf[:self._content_length]
+                self._buf = self._buf[self._content_length:]
+                self._content_length = 0
+                try:
+                    msg = json.loads(raw.decode('utf-8'))
+                    return LSPMessage(
+                        method=msg.get('method', ''),
+                        params=msg.get('params', {}),
+                        id=msg.get('id'),
+                        result=msg.get('result'),
+                        error=msg.get('error'),
+                    )
+                except json.JSONDecodeError:
+                    return None
+
             chunk = sys.stdin.buffer.read(4096)
             if not chunk:
                 return None
-            self._buf += chunk.decode('utf-8')
+            self._buf += chunk
 
     def send_notification(self, method: str, params: dict = None):
         self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
@@ -80,8 +81,10 @@ class LSPConnection:
 
     def _send(self, obj: dict):
         data = json.dumps(obj, ensure_ascii=False)
-        raw = f'Content-Length: {len(data)}\r\n\r\n{data}'
-        sys.stdout.buffer.write(raw.encode('utf-8'))
+        body = data.encode('utf-8')
+        header = f'Content-Length: {len(body)}\r\n\r\n'
+        sys.stdout.buffer.write(header.encode('ascii'))
+        sys.stdout.buffer.write(body)
         sys.stdout.buffer.flush()
 
 
@@ -401,7 +404,7 @@ def handle_initialize(msg: LSPMessage):
         'capabilities': {
             'textDocumentSync': {
                 'openClose': True,
-                'change': {'syncKind': 1},  # Full
+                'change': 1,  # Full (TextDocumentSyncKind.Full)
             },
             'semanticTokensProvider': {
                 'legend': {
@@ -418,7 +421,6 @@ def handle_initialize(msg: LSPMessage):
             'completionProvider': {
                 'triggerCharacters': [':', '.', '<'],
             },
-            'diagnosticsProvider': True,
             'documentFormattingProvider': True,
         },
         'serverInfo': {
@@ -516,12 +518,14 @@ def handle_shutdown(msg: LSPMessage):
 
 _HANDLERS = {
     'initialize': handle_initialize,
+    'initialized': lambda msg: None,
     'textDocument/didOpen': handle_did_open,
     'textDocument/didChange': handle_did_change,
     'textDocument/hover': handle_hover,
     'textDocument/completion': handle_completion,
     'textDocument/semanticTokens/full': handle_semantic_tokens,
     'textDocument/formatting': handle_formatting,
+    '$/cancelRequest': lambda msg: None,
     'shutdown': handle_shutdown,
 }
 

@@ -3,7 +3,7 @@
 // ────────────────────────────────────────────────────────────
 
 // ── Basic functions ──────────────────────────────────────────
-fn greet(name: str) -> str {
+fn greet(name: str) -> str
     return "Hello, " + name + "!";
 }
 

@@ -27,7 +27,7 @@ function findExe(name: string, extPath: string): string | null {
   return null;
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Oxybelis');
   outputChannel.show(true);
   log('=== Oxybelis extension activating ===');
@@ -42,30 +42,8 @@ export async function activate(context: vscode.ExtensionContext) {
   diagCollection = vscode.languages.createDiagnosticCollection('oxybelis');
   context.subscriptions.push(diagCollection);
 
-  // ── LSP ───────────────────────────────────────────────
-  if (oxlspBin) {
-    log(`Starting LSP: ${oxlspBin}`);
-    const serverOptions: ServerOptions = {
-      command: oxlspBin,
-      transport: TransportKind.stdio,
-    };
-    const clientOptions: LanguageClientOptions = {
-      documentSelector: [{ scheme: 'file', language: 'oxybelis' }],
-      outputChannel,
-    };
-    client = new LanguageClient('oxybelis', 'Oxybelis Language Server', serverOptions, clientOptions);
-    try {
-      await client.start();
-      log('LSP started — diagnostics will appear in Problems panel');
-    } catch (e: any) {
-      log(`LSP start failed: ${e.message}`);
-    }
-  } else {
-    log('ox-lsp not found');
-  }
-
-  // ── Diagnostics on save (fallback when LSP not available) ──
-  if (!oxlspBin && oxybelisBin) {
+  // ── Diagnostics on save (always registered as fallback) ──
+  if (oxybelisBin) {
     context.subscriptions.push(
       vscode.workspace.onDidSaveTextDocument(async (doc) => {
         if (doc.languageId !== 'oxybelis') return;
@@ -74,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  // ── Formatter ──────────────────────────────────────────
+  // ── Formatter (no deps) ──────────────────────────────
   if (oxfmtBin) {
     log(`Formatter: ${oxfmtBin}`);
     context.subscriptions.push(
@@ -94,7 +72,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  // ── Commands ───────────────────────────────────────────
+  // ── Commands (no deps) ──────────────────────────────
   context.subscriptions.push(
     vscode.commands.registerCommand('oxybelis.check', () => {
       const ed = vscode.window.activeTextEditor;
@@ -146,6 +124,30 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   log('=== Activation complete ===');
+
+  // ── LSP (start last, don't block activation) ─────────
+  if (oxlspBin) {
+    log(`Starting LSP: ${oxlspBin}`);
+    const serverOptions: ServerOptions = {
+      command: oxlspBin,
+      transport: TransportKind.stdio,
+    };
+    const clientOptions: LanguageClientOptions = {
+      documentSelector: [{ scheme: 'file', language: 'oxybelis' }],
+      outputChannel,
+    };
+    client = new LanguageClient('oxybelis', 'Oxybelis Language Server', serverOptions, clientOptions);
+    client.onDidChangeState((e) => {
+      log(`LSP state: ${e.oldState} → ${e.newState}`);
+    });
+    client.start().then(() => {
+      log('LSP started — diagnostics will appear in Problems panel');
+    }).catch((e: any) => {
+      log(`LSP start failed: ${e.message}`);
+    });
+  } else {
+    log('ox-lsp not found — diagnostics on save will be used');
+  }
 }
 
 function runTypeCheck(fileName: string, binPath: string) {
@@ -156,19 +158,22 @@ function runTypeCheck(fileName: string, binPath: string) {
     log(`Check passed: ${fileName}`);
     vscode.window.showInformationMessage('No errors found');
   } catch (e: any) {
-    const stderr = e.stderr || e.stdout || e.message;
-    log(`Check errors:\n${stderr}`);
-    const diags = parseDiagnostics(stderr, fileName);
+    const raw = e.stderr || e.stdout || e.message;
+    log(`Check errors:\n${stripAnsi(raw)}`);
+    const diags = parseDiagnostics(raw, fileName);
     diagCollection.set(uri, diags);
     vscode.window.showWarningMessage(`${diags.length} error(s) found`);
   }
 }
 
+function stripAnsi(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 function parseDiagnostics(text: string, fileName: string): vscode.Diagnostic[] {
   const diags: vscode.Diagnostic[] = [];
-  const errorRegex = /\[(E\d+)\]:\s*(.+?)\n\s*-+>\s*\[.*?\]:(\d+):(\d+)/g;
-  const lines = text.split('\n');
-  const filePath = fileName.toLowerCase();
+  const clean = stripAnsi(text);
+  const lines = clean.split('\n');
 
   let currentError: string | null = null;
   let currentMsg: string[] = [];
@@ -184,18 +189,17 @@ function parseDiagnostics(text: string, fileName: string): vscode.Diagnostic[] {
         diags.push(makeDiag(currentError, currentMsg.join('\n'), currentLine, currentCol));
       }
       currentError = errMatch[1];
-      currentMsg = [errMatch[2].replace(/\x1b\[[0-9;]*m/g, '')];
+      currentMsg = [errMatch[2]];
 
-      // look ahead for location
       for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        const locMatch = lines[j].match(/-->\s*\[.*?\]:(\d+):(\d+)/);
+        const locMatch = lines[j].match(/-->.*?(\d+):(\d+)/);
         if (locMatch) {
           currentLine = parseInt(locMatch[1]) - 1;
           currentCol = parseInt(locMatch[2]) - 1;
           break;
         }
-        const clean = lines[j].replace(/\x1b\[[0-9;]*m/g, '').trim();
-        if (clean) currentMsg.push(clean);
+        const trimmed = lines[j].trim();
+        if (trimmed) currentMsg.push(trimmed);
       }
       i += 4;
     }
@@ -204,11 +208,10 @@ function parseDiagnostics(text: string, fileName: string): vscode.Diagnostic[] {
     diags.push(makeDiag(currentError, currentMsg.join('\n'), currentLine, currentCol));
   }
 
-  // Fallback: use simpler parser
   if (diags.length === 0) {
     const simpleRegex = /E(\d+).*?(\d+):(\d+)/g;
     let m;
-    while ((m = simpleRegex.exec(text)) !== null) {
+    while ((m = simpleRegex.exec(clean)) !== null) {
       diags.push(makeDiag(m[1], 'type error', parseInt(m[2]) - 1, parseInt(m[3]) - 1));
     }
   }
