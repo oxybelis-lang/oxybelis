@@ -27,7 +27,7 @@ $RepoRoot = if ($LocalBuild -or -not $Version) { Split-Path -Parent $MyInvocatio
 $OxHome = if ($InstallDir) { $InstallDir } else { Join-Path $env:LOCALAPPDATA 'oxybelis' }
 $BinDir = Join-Path $OxHome 'bin'
 
-if (-not $Version) { $Version = '0.2.0' }
+if (-not $Version) { $Version = '0.3.0' }
 
 # ── Platform detection ────────────────────────────────────────
 $Arch = switch -Wildcard ("$([Environment]::ProcessorArchitecture)$env:PROCESSOR_ARCHITECTURE") {

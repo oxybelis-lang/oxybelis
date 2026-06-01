@@ -30,7 +30,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "$VERSION" && "$LOCAL_BUILD" -eq 0 ]]; then
-    VERSION="0.2.0"
+    VERSION="0.3.0"
 fi
 
 # ── Platform detection ────────────────────────────────────────
