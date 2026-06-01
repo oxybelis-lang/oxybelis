@@ -3,7 +3,7 @@
 // ────────────────────────────────────────────────────────────
 
 // ── Basic functions ──────────────────────────────────────────
-fn greet(name: str) -> str
+fn greet(name: str) -> str {
     return "Hello, " + name + "!";
 }
 
@@ -137,6 +137,12 @@ fn http_status(code: int) -> str {
     return "";
 }
 
+// ── Functional chaining helpers ────────────────────────────────
+fn dbl(x: int) -> int { return x * 2; }
+fn is_even(x: int) -> bool { return x % 2 == 0; }
+fn add(a: int, b: int) -> int { return a + b; }
+fn print_item(x: int) { print(x); }
+
 // ── Main ──────────────────────────────────────────────────────
 fn main() {
     print("═══ Oxybelis Language Demo ═══");
@@ -215,6 +221,51 @@ fn main() {
     c.decrement();
     print("Counter after +3 -1:");
     print(c.get());
+    print("");
+
+    // ── Functional chaining ─────────────────────────────────
+    print("═══ Functional Chaining Demo ═══");
+    print("");
+
+    var numbers: List<int> = [1, 2, 3, 4, 5, 6];
+
+    print("numbers.map(dbl):");
+    let dbld = numbers.map(dbl);
+    print(dbld);
+
+    print("numbers.filter(is_even):");
+    let evens = numbers.filter(is_even);
+    print(evens);
+
+    print("numbers.reduce(0, add):");
+    let sum = numbers.reduce(0, add);
+    print(sum);
+
+    print("numbers.any(is_even):");
+    print(numbers.any(is_even));
+
+    print("numbers.all(is_even):");
+    print(numbers.all(is_even));
+
+    print("numbers.find(is_even):");
+    print(numbers.find(is_even));
+
+    print("numbers.sum():");
+    print(numbers.sum());
+
+    print("numbers.min():");
+    print(numbers.min());
+
+    print("numbers.max():");
+    print(numbers.max());
+
+    print("numbers.for_each(print_item):");
+    numbers.for_each(print_item);
+
+    print("Chained: numbers.filter(is_even).map(dbl):");
+    let chained = numbers.filter(is_even).map(dbl);
+    print(chained);
+
     print("");
     print("═══ Done ═══");
 }

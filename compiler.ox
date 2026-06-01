@@ -319,6 +319,13 @@ fn node_range_lit(start: int, end: int) -> int {
     return id
 }
 
+fn node_try_op(operand: int) -> int {
+    let id = alloc_node()
+    node_pool[id].kind = "TryOp"
+    node_pool[id].operand = operand
+    return id
+}
+
 fn node_wild() -> int {
     let id = alloc_node()
     node_pool[id].kind = "WildCard"
@@ -443,6 +450,7 @@ let TT_ARROW        = "ARROW"
 let TT_FAT_ARROW    = "FAT_ARROW"
 let TT_DOT          = "DOT"
 let TT_BANG         = "BANG"
+let TT_QUESTION     = "QUESTION"
 let TT_LBRACE       = "LBRACE"
 let TT_RBRACE       = "RBRACE"
 let TT_LPAREN       = "LPAREN"
@@ -659,6 +667,7 @@ class Lexer {
             } elif ch == ":"  { push(tokens, make_token(TT_COLON,    ":", line, col))
             } elif ch == ","  { push(tokens, make_token(TT_COMMA,    ",", line, col))
             } elif ch == ";"  { push(tokens, make_token(TT_SEMI,     ";", line, col))
+            } elif ch == "?"  { push(tokens, make_token(TT_QUESTION, "?", line, col))
             } else {
                 report_error(self.src, line, col, "Unknown character " + ch)
                 exit(1)
@@ -1079,6 +1088,9 @@ class Parser {
                 let idx: int = self.parse_expr()
                 self.expect([TT_RBRACKET])
                 expr = node_index(expr, idx)
+            } elif self.check([TT_QUESTION]) {
+                self.advance()
+                expr = node_try_op(expr)
             } else { break }
         }
         return expr
@@ -1148,16 +1160,6 @@ class Parser {
 }
 
 // ── Type mapping helpers ───────────────────────────────────
-fn str_sub(s: str, start: int, end: int) -> str {
-    var result: str = ""
-    var i = start
-    while i < end {
-        result = result + str_get(s, i)
-        i = i + 1
-    }
-    return result
-}
-
 fn split_args(s: str) -> List<str> {
     let result: List<str> = []
     var cur: str = ""
@@ -1183,7 +1185,7 @@ fn map_type(t: str) -> str {
     if t == "bool"  { return "bool" }
     if t == "str"   { return "std::string" }
     if t == "void"  { return "void" }
-    if t == "Option" or t == "List" or t == "Map" { return t }
+    if t == "Option" or t == "List" or t == "Map" or t == "Result" { return t }
     var i = 0
     while i < len(t) {
         if str_get(t, i) == "<" {
@@ -1212,6 +1214,7 @@ class CodeGen {
     depth: int
     in_class: str
     tmp_counter: int
+    modules: List<str>
 
     fn w(self, line: str) -> void {
         var indent: str = ""
@@ -1263,6 +1266,7 @@ class CodeGen {
         }
         if node.kind == "NoneLit"  { return "std::nullopt" }
         if node.kind == "SomeLit"  { return "Some(" + self.expr(node.value) + ")" }
+        if node.kind == "TryOp"    { return "_ox_try(" + self.expr(node.operand) + ")" }
         if node.kind == "WildCard" { return "_" }
         if node.kind == "Ident" {
             if node.name == "self" and self.in_class != "" { return "(*this)" }
@@ -1279,6 +1283,13 @@ class CodeGen {
         }
         if node.kind == "FnCall" {
             let fn_name: str = self.expr(node.func)
+            let func_node = node_pool[node.func]
+            if func_node.kind == "Ident" and func_node.name == "Ok" {
+                return "Ok(" + self.expr(node.args[0]) + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "Err" {
+                return "Err(" + self.expr(node.args[0]) + ")"
+            }
             var as: str = ""
             var i = 0
             while i < len(node.args) {
@@ -1297,9 +1308,30 @@ class CodeGen {
                 as = as + self.expr(node.args[i])
                 i = i + 1
             }
+            // Module function call: json.escape(s) → _oxm_json::escape(s)
+            var is_mod = false; var mi = 0
+            while mi < len(self.modules) {
+                if self.modules[mi] == obj_str { is_mod = true; break }
+                mi = mi + 1
+            }
+            if is_mod {
+                return "_oxm_" + obj_str + "::" + node.name + "(" + as + ")"
+            }
+            // Built-in list chaining methods
+            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" {
+                if as != "" { return "_ox_" + node.name + "(" + obj_str + ", " + as + ")" }
+                return "_ox_" + node.name + "(" + obj_str + ")"
+            }
             return obj_str + "." + node.name + "(" + as + ")"
         }
         if node.kind == "Attr" {
+            // Option<T>.value → *expr   (for Ident, FnCall, MethodCall)
+            if node.name == "value" {
+                let obj_node = node_pool[node.obj]
+                if obj_node.kind == "Ident" or obj_node.kind == "FnCall" or obj_node.kind == "MethodCall" {
+                    return "(*" + self.expr(node.obj) + ")"
+                }
+            }
             return self.expr(node.obj) + "." + node.name
         }
         if node.kind == "Index" {
@@ -1572,139 +1604,283 @@ class CodeGen {
     }
 
     fn generate(self, prog_id: int) -> str {
-        let prog = node_pool[prog_id]
-        self.w("// ── Generated by Oxybelis ───────────────────────────────────────────────────")
-        self.w("#include <iostream>")
-        self.w("#include <string>")
-        self.w("#include <vector>")
-        self.w("#include <optional>")
-        self.w("#include <unordered_map>")
-        self.w("#include <functional>")
-        self.w("#include <algorithm>")
-        self.w("#include <cmath>")
-        self.w("#include <stdexcept>")
-        self.w("#include <sstream>")
-        self.w("#include <fstream>")
-        self.w("#include <cstdlib>")
-        self.w("#include <cctype>")
-        self.w("#ifdef _WIN32")
-        self.w("#include <windows.h>")
-        self.w("#endif")
-        self.w("")
-        self.w("// ── Oxybelis stdlib types ───")
-        self.w("template<typename T> using List = std::vector<T>;")
-        self.w("template<typename K,typename V> using Map = std::unordered_map<K,V>;")
-        self.w("template<typename T> using Option = std::optional<T>;")
-        self.w("")
-        self.w("template<typename T> Option<T> Some(T val) { return std::optional<T>(val); }")
-        self.w("inline constexpr std::nullopt_t None = std::nullopt;")
-        self.w("")
+        return self._generate(prog_id, "", true)
+    }
 
-        // Print / len / push / pop
-        self.w("// ── print ───")
-        self.w("template<typename T> void print(const T& v) { std::cout << v << \"\\n\"; }")
-        self.w("inline void print(bool v) { std::cout << (v ? \"true\" : \"false\") << \"\\n\"; }")
-        self.w("inline void print(const std::string& v) { std::cout << v << \"\\n\"; }")
-        self.w("template<typename T> void print(const std::vector<T>& v) {")
-        self.depth = self.depth + 1
-        self.w("std::cout << \"[\";")
-        self.w("for (size_t i=0;i<v.size();i++){if(i)std::cout<<\", \";std::cout<<v[i];}")
-        self.w("std::cout << \"]\\n\";")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("template<typename T> void print(const std::optional<T>& o){")
-        self.depth = self.depth + 1
-        self.w("if(o) std::cout<<\"Some(\"<<*o<<\")\\n\"; else std::cout<<\"None\\n\";")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("")
-        self.w("// ── collections ───")
-        self.w("template<typename T> size_t len(const std::vector<T>& v){return v.size();}")
-        self.w("inline size_t len(const std::string& s){return s.size();}")
-        self.w("template<typename T> void push(std::vector<T>& v,const T& x){v.push_back(x);}")
-        self.w("template<typename T> T pop(std::vector<T>& v){T x=v.back();v.pop_back();return x;}")
-        self.w("template<typename T> bool contains(const std::vector<T>& v, const T& x){")
-        self.depth = self.depth + 1
-        self.w("return std::find(v.begin(),v.end(),x)!=v.end();")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("")
-        self.w("// ── range ───")
-        self.w("inline std::vector<int> range(int n){")
-        self.depth = self.depth + 1
-        self.w("std::vector<int> r; r.reserve(n);")
-        self.w("for(int i=0;i<n;i++) r.push_back(i); return r;")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline std::vector<int> range(int a,int b){")
-        self.depth = self.depth + 1
-        self.w("std::vector<int> r; r.reserve(b-a>0?b-a:0);")
-        self.w("for(int i=a;i<b;i++) r.push_back(i); return r;")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("")
-        self.w("// ── conversions ───")
-        self.w("inline std::string str(int v) { return std::to_string(v); }")
-        self.w("inline std::string str(double v) { return std::to_string(v); }")
-        self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
-        self.w("inline std::string str(const std::string& v){ return v; }")
-        self.w("inline int to_int(const std::string& s) { return std::stoi(s); }")
-        self.w("inline double to_float(const std::string& s) { return std::stod(s); }")
-        self.w("")
-        self.w("// ── math ───")
-        self.w("using std::sqrt; using std::abs; using std::pow;")
-        self.w("using std::sin; using std::cos; using std::tan;")
-        self.w("using std::floor;using std::ceil;using std::round;")
-        self.w("using std::log; using std::exp;")
-        self.w("inline int max(int a,int b){return a>b?a:b;}")
-        self.w("inline int min(int a,int b){return a<b?a:b;}")
-        self.w("")
-        self.w("// ── string helpers ───")
-        self.w("inline std::string str_get(const std::string& s, int i) {")
-        self.depth = self.depth + 1
-        self.w("if (i < 0 || i >= (int)s.size()) return \"\\0\";")
-        self.w("return std::string(1, s[i]);")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline bool is_digit(const std::string& c) {")
-        self.depth = self.depth + 1
-        self.w("return c.size() == 1 && std::isdigit((unsigned char)c[0]);")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline bool is_alpha(const std::string& c) {")
-        self.depth = self.depth + 1
-        self.w("return c.size() == 1 && std::isalpha((unsigned char)c[0]);")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline bool is_alnum(const std::string& c) {")
-        self.depth = self.depth + 1
-        self.w("return c.size() == 1 && std::isalnum((unsigned char)c[0]);")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("")
-        self.w("// ── system ───")
-        self.w("static int _ox_argc; static char** _ox_argv;")
-        self.w("inline std::vector<std::string> args() {")
-        self.depth = self.depth + 1
-        self.w("std::vector<std::string> r;")
-        self.w("for (int i=0;i<_ox_argc;i++) r.push_back(std::string(_ox_argv[i]));")
-        self.w("return r;")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline std::string read_file(const std::string& path) {")
-        self.depth = self.depth + 1
-        self.w("std::ifstream f(path); if(!f) return \"\";")
-        self.w("std::ostringstream ss; ss << f.rdbuf(); return ss.str();")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline void write_file(const std::string& path, const std::string& c) {")
-        self.depth = self.depth + 1
-        self.w("std::ofstream f(path); f << c;")
-        self.depth = self.depth - 1
-        self.w("}")
-        self.w("inline int exec(const std::string& cmd) { return std::system(cmd.c_str()); }")
-        self.w("")
-        self.w("// ── User Code ───")
+    fn generate_module(self, prog_id: int, mod_name: str) -> str {
+        return self._generate(prog_id, "_oxm_" + mod_name, false)
+    }
+
+    fn _generate(self, prog_id: int, ns: str, include_runtime: bool) -> str {
+        let prog = node_pool[prog_id]
+        if include_runtime {
+            self.w("// ── Generated by Oxybelis ───────────────────────────────────────────────────")
+            self.w("#include <iostream>")
+            self.w("#include <string>")
+            self.w("#include <vector>")
+            self.w("#include <optional>")
+            self.w("#include <unordered_map>")
+            self.w("#include <functional>")
+            self.w("#include <algorithm>")
+            self.w("#include <cmath>")
+            self.w("#include <stdexcept>")
+            self.w("#include <sstream>")
+            self.w("#include <fstream>")
+            self.w("#include <cstdlib>")
+            self.w("#include <cctype>")
+            self.w("#ifdef _WIN32")
+            self.w("#include <windows.h>")
+            self.w("#endif")
+            self.w("")
+            self.w("// ── Oxybelis stdlib types ───")
+            self.w("template<typename T> using List = std::vector<T>;")
+            self.w("template<typename K,typename V> using Map = std::unordered_map<K,V>;")
+            self.w("template<typename T> using Option = std::optional<T>;")
+            self.w("")
+            self.w("template<typename T> Option<T> Some(T val) { return std::optional<T>(val); }")
+            self.w("inline constexpr std::nullopt_t None = std::nullopt;")
+            self.w("")
+            self.w("// ── Result type ───")
+            self.w("template<typename T, typename E>")
+            self.w("struct Result {")
+            self.depth = self.depth + 1
+            self.w("bool is_ok;")
+            self.w("T value;")
+            self.w("E error;")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("template<typename T>")
+            self.w("struct _ox_OkHelper {")
+            self.depth = self.depth + 1
+            self.w("T val;")
+            self.w("_ox_OkHelper(const T& v) : val(v) {}")
+            self.w("template<typename E> operator Result<T, E>() const {")
+            self.depth = self.depth + 1
+            self.w("Result<T, E> r; r.is_ok = true; r.value = val; return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("template<typename T, typename = std::enable_if_t<!std::is_array_v<T>>>")
+            self.w("_ox_OkHelper<T> Ok(const T& v) { return _ox_OkHelper<T>(v); }")
+            self.w("inline _ox_OkHelper<std::string> Ok(const char* v) { return _ox_OkHelper<std::string>(v); }")
+            self.w("template<typename E>")
+            self.w("struct _ox_ErrHelper {")
+            self.depth = self.depth + 1
+            self.w("E error;")
+            self.w("_ox_ErrHelper(const E& e) : error(e) {}")
+            self.w("template<typename T> operator Result<T, E>() const {")
+            self.depth = self.depth + 1
+            self.w("Result<T, E> r; r.is_ok = false; r.error = error; return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("template<typename E, typename = std::enable_if_t<!std::is_array_v<E>>>")
+            self.w("_ox_ErrHelper<E> Err(const E& e) { return _ox_ErrHelper<E>(e); }")
+            self.w("inline _ox_ErrHelper<std::string> Err(const char* e) { return _ox_ErrHelper<std::string>(e); }")
+            self.w("template<typename T, typename E>")
+            self.w("T _ox_try(const Result<T, E>& r) {")
+            self.depth = self.depth + 1
+            self.w("if (!r.is_ok) { std::cerr << \"\\nError: \" << r.error << \"\\n\"; std::abort(); }")
+            self.w("return r.value;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("T _ox_try(const std::optional<T>& o) {")
+            self.depth = self.depth + 1
+            self.w("if (!o) { std::cerr << \"\\nError: unwrapped None\\n\"; std::abort(); }")
+            self.w("return *o;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── print ───")
+            self.w("template<typename T> void print(const T& v) { std::cout << v << \"\\n\"; }")
+            self.w("inline void print(bool v) { std::cout << (v ? \"true\" : \"false\") << \"\\n\"; }")
+            self.w("inline void print(const std::string& v) { std::cout << v << \"\\n\"; }")
+            self.w("template<typename T> void print(const std::vector<T>& v) {")
+            self.depth = self.depth + 1
+            self.w("std::cout << \"[\";")
+            self.w("for (size_t i=0;i<v.size();i++){if(i)std::cout<<\", \";std::cout<<v[i];}")
+            self.w("std::cout << \"]\\n\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> void print(const std::optional<T>& o){")
+            self.depth = self.depth + 1
+            self.w("if(o) std::cout<<\"Some(\"<<*o<<\")\\n\"; else std::cout<<\"None\\n\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T, typename E> void print(const Result<T,E>& r){")
+            self.depth = self.depth + 1
+            self.w("if(r.is_ok) std::cout<<\"Ok(\"<<r.value<<\")\\n\"; else std::cout<<\"Err(\"<<r.error<<\")\\n\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── collections ───")
+            self.w("template<typename T> size_t len(const std::vector<T>& v){return v.size();}")
+            self.w("inline size_t len(const std::string& s){return s.size();}")
+            self.w("template<typename T> void push(std::vector<T>& v,const T& x){v.push_back(x);}")
+            self.w("template<typename T> T pop(std::vector<T>& v){T x=v.back();v.pop_back();return x;}")
+            self.w("template<typename T> bool contains(const std::vector<T>& v, const T& x){")
+            self.depth = self.depth + 1
+            self.w("return std::find(v.begin(),v.end(),x)!=v.end();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── functional chaining (List<T>) ───")
+            self.w("template<typename T,typename U> std::vector<U> _ox_map(const std::vector<T>& v,U(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("std::vector<U> r; r.reserve(v.size()); for(const auto& x:v) r.push_back(fn(x)); return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<T> _ox_filter(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> r; for(const auto& x:v) if(fn(x)) r.push_back(x); return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T,typename U> U _ox_reduce(const std::vector<T>& v,U init,U(*fn)(U,T)){")
+            self.depth = self.depth + 1
+            self.w("U acc=init; for(const auto& x:v) acc=fn(acc,x); return acc;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> void _ox_for_each(const std::vector<T>& v,void(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("for(const auto& x:v) fn(x);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> bool _ox_any(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("for(const auto& x:v) if(fn(x)) return true; return false;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> bool _ox_all(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("for(const auto& x:v) if(!fn(x)) return false; return true;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::optional<T> _ox_find(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("for(const auto& x:v) if(fn(x)) return std::optional<T>(x); return std::nullopt;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> T _ox_sum(const std::vector<T>& v){")
+            self.depth = self.depth + 1
+            self.w("T acc=T(); for(const auto& x:v) acc=acc+x; return acc;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> T _ox_min(const std::vector<T>& v){")
+            self.depth = self.depth + 1
+            self.w("T m=v[0]; for(const auto& x:v) if(x<m) m=x; return m;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
+            self.depth = self.depth + 1
+            self.w("T m=v[0]; for(const auto& x:v) if(m<x) m=x; return m;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── range ───")
+            self.w("inline std::vector<int> range(int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<int> r; r.reserve(n);")
+            self.w("for(int i=0;i<n;i++) r.push_back(i); return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<int> range(int a,int b){")
+            self.depth = self.depth + 1
+            self.w("std::vector<int> r; r.reserve(b-a>0?b-a:0);")
+            self.w("for(int i=a;i<b;i++) r.push_back(i); return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── conversions ───")
+            self.w("inline std::string str(const std::string& v){ return v; }")
+            self.w("inline std::string str(const char* v){ return std::string(v); }")
+            self.w("inline std::string str(int v) { return std::to_string(v); }")
+            self.w("inline std::string str(double v) { return std::to_string(v); }")
+            self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
+            self.w("template<typename T> std::string str(const std::optional<T>& v){")
+            self.depth = self.depth + 1
+            self.w("if(v) return \"Some(\"+str(*v)+\")\"; else return \"None\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T, typename E> std::string str(const Result<T,E>& r){")
+            self.depth = self.depth + 1
+            self.w("if(r.is_ok) return \"Ok(\"+str(r.value)+\")\"; else return \"Err(\"+str(r.error)+\")\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline int to_int(const std::string& s) { return std::stoi(s); }")
+            self.w("inline double to_float(const std::string& s) { return std::stod(s); }")
+            self.w("")
+            self.w("// ── math ───")
+            self.w("using std::sqrt; using std::abs; using std::pow;")
+            self.w("using std::sin; using std::cos; using std::tan;")
+            self.w("using std::floor;using std::ceil;using std::round;")
+            self.w("using std::log; using std::exp;")
+            self.w("inline int max(int a,int b){return a>b?a:b;}")
+            self.w("inline int min(int a,int b){return a<b?a:b;}")
+            self.w("")
+            self.w("// ── string helpers ───")
+            self.w("inline std::string str_get(const std::string& s, int i) {")
+            self.depth = self.depth + 1
+            self.w("if (i < 0 || i >= (int)s.size()) return \"\\0\";")
+            self.w("return std::string(1, s[i]);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool is_digit(const std::string& c) {")
+            self.depth = self.depth + 1
+            self.w("return c.size() == 1 && std::isdigit((unsigned char)c[0]);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool is_alpha(const std::string& c) {")
+            self.depth = self.depth + 1
+            self.w("return c.size() == 1 && std::isalpha((unsigned char)c[0]);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool is_alnum(const std::string& c) {")
+            self.depth = self.depth + 1
+            self.w("return c.size() == 1 && std::isalnum((unsigned char)c[0]);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_sub(const std::string& s, int start, int end) {")
+            self.depth = self.depth + 1
+            self.w("if (start < 0) start = 0;")
+            self.w("if (end > (int)s.size()) end = (int)s.size();")
+            self.w("if (start >= end) return \"\";")
+            self.w("return s.substr(start, end - start);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── system ───")
+            self.w("static int _ox_argc; static char** _ox_argv;")
+            self.w("inline std::vector<std::string> args() {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("for (int i=0;i<_ox_argc;i++) r.push_back(std::string(_ox_argv[i]));")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string read_file(const std::string& path) {")
+            self.depth = self.depth + 1
+            self.w("std::ifstream f(path); if(!f) return \"\";")
+            self.w("std::ostringstream ss; ss << f.rdbuf(); return ss.str();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline void write_file(const std::string& path, const std::string& c) {")
+            self.depth = self.depth + 1
+            self.w("std::ofstream f(path); f << c;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline int exec(const std::string& cmd) { return std::system(cmd.c_str()); }")
+            self.w("")
+        }
+        if ns != "" {
+            self.w("// ── Module: " + ns + " ───")
+            self.w("namespace " + ns + " {")
+            self.depth = self.depth + 1
+        } else {
+            self.w("// ── User Code ───")
+        }
         // Forward-declare structs
         var i = 0
         while i < len(prog.stmts) {
@@ -1725,6 +1901,11 @@ class CodeGen {
             self.gen_top(prog.stmts[i])
             i = i + 1
         }
+        if ns != "" {
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+        }
         // Join output
         var result: str = ""
         i = 0
@@ -1738,16 +1919,141 @@ class CodeGen {
 }
 
 // ── Entry point ─────────────────────────────────────────────
-fn compile_source(src: str) -> int {
-    // Reset node pool
+fn compile_source(src: str, source_path: str) -> int {
     node_pool = []
     let lexer = Lexer { src: src, pos: 0, line: 1, col: 1 }
     let tokens = lexer.tokenize()
     let parser = Parser { tokens: tokens, pos: 0, src: src }
     let ast = parser.parse()
-    let codegen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0 }
-    let cpp = codegen.generate(ast)
-    // Store the C++ string in the node pool
+
+    // ── Module resolution ──
+    var module_cpps: List<str> = []
+    var module_names: List<str> = []
+
+    // Extract source directory from path
+    var src_dir: str = ""
+    if source_path != "" {
+        var slash_pos = -1
+        var i = 0
+        while i < len(source_path) {
+            let c = str_get(source_path, i)
+            if c == "/" or c == "\\" { slash_pos = i }
+            i = i + 1
+        }
+        if slash_pos >= 0 { src_dir = str_sub(source_path, 0, slash_pos) }
+    }
+
+    let prog = node_pool[ast]
+    var si = 0
+    while si < len(prog.stmts) {
+        let stmt = node_pool[prog.stmts[si]]
+        if stmt.kind == "ImportStmt" {
+            // Collect path components
+            var mod_parts: List<str> = []
+            var pi = 0
+            while pi < len(stmt.path) {
+                push(mod_parts, node_pool[stmt.path[pi]].str_val)
+                pi = pi + 1
+            }
+
+            // Build module file name (e.g. "json.ox")
+            var mod_file: str = ""
+            pi = 0
+            while pi < len(mod_parts) {
+                if pi > 0 { mod_file = mod_file + "/" }
+                mod_file = mod_file + mod_parts[pi]
+                pi = pi + 1
+            }
+            mod_file = mod_file + ".ox"
+
+            var mod_src: str = ""
+            var found_mod = false
+
+            // Try source-file directory
+            if src_dir != "" {
+                mod_src = read_file(src_dir + "/" + mod_file)
+                if mod_src != "" { found_mod = true }
+            }
+            // Try current directory
+            if not found_mod {
+                mod_src = read_file(mod_file)
+                if mod_src != "" { found_mod = true }
+            }
+            // Try oxlib directory
+            if not found_mod {
+                mod_src = read_file("oxlib/" + mod_file)
+                if mod_src != "" { found_mod = true }
+            }
+
+            if not found_mod {
+                print("Error: cannot find module `" + mod_file + "`")
+                exit(1)
+            }
+
+            // Parse module
+            let mod_lexer = Lexer { src: mod_src, pos: 0, line: 1, col: 1 }
+            let mod_tokens = mod_lexer.tokenize()
+            let mod_parser = Parser { tokens: mod_tokens, pos: 0, src: mod_src }
+            let mod_ast = mod_parser.parse()
+
+            // Build module name and C++-safe namespace name
+            var mod_name: str = ""
+            var ns_name: str = ""
+            pi = 0
+            while pi < len(mod_parts) {
+                if pi > 0 { mod_name = mod_name + "."; ns_name = ns_name + "_" }
+                mod_name = mod_name + mod_parts[pi]
+                ns_name = ns_name + mod_parts[pi]
+                pi = pi + 1
+            }
+            push(module_names, mod_name)
+
+            // Generate module C++ (inside namespace, no runtime header)
+            let mod_cgen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: [] }
+            push(module_cpps, mod_cgen.generate_module(mod_ast, ns_name))
+        }
+        si = si + 1
+    }
+
+    // ── Generate main C++ (with module names so codegen resolves mod.fn() calls) ──
+    let codegen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: module_names }
+    let main_cpp = codegen.generate(ast)
+
+    // ── Assemble final C++ ──
+    var cpp: str = ""
+    if len(module_cpps) > 0 {
+        // Find split point ── User Code ───
+        let marker = "// ── User Code ───"
+        var user_start = -1
+        var i = 0
+        while i < len(main_cpp) - len(marker) {
+            var matched = true
+            var j = 0
+            while j < len(marker) {
+                if str_get(main_cpp, i + j) != str_get(marker, j) { matched = false; break }
+                j = j + 1
+            }
+            if matched { user_start = i; break }
+            i = i + 1
+        }
+
+        if user_start >= 0 {
+            cpp = str_sub(main_cpp, 0, user_start)
+            cpp = cpp + "// ── Module Code ──────────────────────────────────\n"
+            var mi = 0
+            while mi < len(module_cpps) {
+                if mi > 0 { cpp = cpp + "\n" }
+                cpp = cpp + module_cpps[mi]
+                mi = mi + 1
+            }
+            cpp = cpp + "\n\n" + str_sub(main_cpp, user_start, len(main_cpp))
+        } else {
+            cpp = main_cpp
+        }
+    } else {
+        cpp = main_cpp
+    }
+
     let id = alloc_node()
     node_pool[id].kind = "Result"
     node_pool[id].str_val = cpp
@@ -1779,7 +2085,7 @@ fn main() -> void {
         exit(1)
     }
 
-    let result_id = compile_source(src)
+    let result_id = compile_source(src, source_path)
     let cpp: str = node_pool[result_id].str_val
 
     if output_path != "" {
