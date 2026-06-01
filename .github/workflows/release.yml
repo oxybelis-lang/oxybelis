@@ -45,32 +45,11 @@ jobs:
       - name: Build binaries
         shell: bash
         run: |
-          python -m nuitka --onefile --assume-yes-for-downloads oxybelis.py
-          python -m nuitka --onefile --assume-yes-for-downloads ox_fmt.py
-          python -m nuitka --onefile --assume-yes-for-downloads ox_lsp.py
+          python -m nuitka --onefile --output-filename=oxybelis${{ matrix.ext }} --assume-yes-for-downloads oxybelis.py
+          python -m nuitka --onefile --output-filename=ox-fmt${{ matrix.ext }} --assume-yes-for-downloads ox_fmt.py
+          python -m nuitka --onefile --output-filename=ox-lsp${{ matrix.ext }} --assume-yes-for-downloads ox_lsp.py
           echo "=== Files after Nuitka ==="
-          ls -la oxybelis* ox_fmt* ox_lsp* 2>/dev/null || true
-
-      - name: Rename binaries
-        shell: bash
-        run: |
-          # Nuitka names the binary after the script (strip .py).
-          # On Linux/macOS: oxybelis (no ext); on Windows: oxybelis.exe
-          for src in oxybelis ox_fmt ox_lsp; do
-            # Try name as-is, then with .exe
-            if [ -f "$src" ]; then
-              if [ "$src" = "ox_fmt" ]; then dst="ox-fmt${{ matrix.ext }}"; 
-              elif [ "$src" = "ox_lsp" ]; then dst="ox-lsp${{ matrix.ext }}";
-              else dst="$src${{ matrix.ext }}"; fi
-              mv "$src" "$dst"
-              echo "Renamed $src → $dst"
-            elif [ -f "$src.exe" ]; then
-              mv "$src.exe" "$src${{ matrix.ext }}"
-              echo "Renamed $src.exe → $src${{ matrix.ext }}"
-            else
-              echo "Warning: $src not found"; ls -la "$src"* 2>/dev/null || true
-            fi
-          done
+          ls -la oxybelis* ox-fmt* ox-lsp* 2>/dev/null || true
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
