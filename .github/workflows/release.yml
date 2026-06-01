@@ -59,6 +59,7 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           7z a "oxybelis-${{ matrix.target }}.zip" \
             oxybelis.exe ox-fmt.exe ox-lsp.exe
