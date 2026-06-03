@@ -9,11 +9,11 @@
     Usage:
         irm https://raw.githubusercontent.com/oxybelis-lang/oxybelis/main/install.ps1 | iex
         .\install.ps1
-        .\install.ps1 -Version 0.3.0 -InstallDir D:\ox
+        .\install.ps1 -Version 0.3.1 -InstallDir D:\ox
 #>
 
 param(
-    [string]$Version = '0.3.0',
+    [string]$Version = '0.3.1',
     [string]$InstallDir = ''
 )
 

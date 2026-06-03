@@ -863,12 +863,20 @@ T _ox_try(const Result<T, E>& r) {
     return r.value;
 }
 template<typename T>
-T _ox_try(const std::optional<T>& o) {
-    if (!o) { std::cerr << "\nError: unwrapped None\n"; std::abort(); }
-    return *o;
-}
+    T _ox_try(const std::optional<T>& o) {
+        if (!o) { std::cerr << "\nError: unwrapped None\n"; std::abort(); }
+        return *o;
+    }
 
-// ── str (declared before print) ─────────────────────────────────────────────
+    // ── _ox_value ────────────────────────────────────────────────────────────────
+    template<typename T>
+    auto& _ox_value(std::optional<T>& o) { return *o; }
+    template<typename T>
+    auto _ox_value(const std::optional<T>& o) { return *o; }
+    template<typename T>
+    auto& _ox_value(T& o) { return o.value; }
+
+    // ── str (declared before print) ─────────────────────────────────────────────
 inline std::string str(const std::string& v){ return v; }
 inline std::string str(const char* v)     { return std::string(v); }
 inline std::string str(int v)        { return std::to_string(v); }
@@ -1443,10 +1451,10 @@ class CodeGen:
                 return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
             return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
-            if node.name == 'value' and isinstance(node.obj, (Ident, FnCall)):
+            if node.name == 'value' and isinstance(node.obj, (Ident, FnCall, MethodCall)):
                 obj_type = getattr(node.obj, '_type', '')
                 if _base_type(obj_type) == 'Option':
-                    return f"(*{self.expr(node.obj)})"
+                    return f"_ox_value({self.expr(node.obj)})"
             return f"{self.expr(node.obj)}.{node.name}"
         if isinstance(node, Index):
             return f"{self.expr(node.obj)}[{self.expr(node.idx)}]"

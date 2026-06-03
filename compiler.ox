@@ -1419,11 +1419,11 @@ class CodeGen {
             return obj_str + "." + mname + "(" + as + ")"
         }
         if node.kind == "Attr" {
-            // Option<T>.value → *expr   (for Ident, FnCall, MethodCall)
+            // .value → _ox_value(obj)   (works for Option, Result, and struct fields)
             if node.name == "value" {
                 let obj_node = node_pool[node.obj]
                 if obj_node.kind == "Ident" or obj_node.kind == "FnCall" or obj_node.kind == "MethodCall" {
-                    return "(*" + self.expr(node.obj) + ")"
+                    return "_ox_value(" + self.expr(node.obj) + ")"
                 }
             }
             return self.expr(node.obj) + "." + node.name
@@ -1789,6 +1789,15 @@ class CodeGen {
             self.depth = self.depth - 1
             self.w("}")
             self.w("")
+            self.w("// ── _ox_value ───")
+            self.w("template<typename T>")
+            self.w("auto& _ox_value(std::optional<T>& o) { return *o; }")
+            self.w("template<typename T>")
+            self.w("auto _ox_value(const std::optional<T>& o) { return *o; }")
+            self.w("template<typename T>")
+            self.w("auto& _ox_value(T& o) { return o.value; }")
+            self.w("")
+
             self.w("// ── print ───")
             self.w("template<typename T> void print(const T& v) { std::cout << v << \"\\n\"; }")
             self.w("inline void print(bool v) { std::cout << (v ? \"true\" : \"false\") << \"\\n\"; }")

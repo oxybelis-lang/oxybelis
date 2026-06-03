@@ -5,7 +5,7 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/oxybelis-lang/oxybelis/main/install.sh | sh
 #   ./install.sh
-#   ./install.sh --version 0.3.0 --dir ~/.local/oxybelis
+#   ./install.sh --version 0.3.1 --dir ~/.local/oxybelis
 #
 # Prerequisites:
 #   Linux:   g++ (apt install build-essential)
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$VERSION" ]]; then VERSION="0.3.0"; fi
+if [[ -z "$VERSION" ]]; then VERSION="0.3.1"; fi
 
 # ── Platform ──────────────────────────────────────────────────
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
