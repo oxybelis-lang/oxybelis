@@ -1628,6 +1628,7 @@ class CodeGen {
             self.w("#include <fstream>")
             self.w("#include <cstdlib>")
             self.w("#include <cctype>")
+            self.w("#include <filesystem>")
             self.w("#ifdef _WIN32")
             self.w("#include <windows.h>")
             self.w("#endif")
@@ -1842,6 +1843,7 @@ class CodeGen {
             self.w("return c.size() == 1 && std::isalnum((unsigned char)c[0]);")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline bool str_contains(const std::string& s, const std::string& sub) { return s.find(sub) != std::string::npos; }")
             self.w("inline std::string str_sub(const std::string& s, int start, int end) {")
             self.depth = self.depth + 1
             self.w("if (start < 0) start = 0;")
@@ -1866,12 +1868,42 @@ class CodeGen {
             self.w("std::ostringstream ss; ss << f.rdbuf(); return ss.str();")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline std::vector<std::string> read_lines(const std::string& path) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> lines;")
+            self.w("std::ifstream f(path); if(!f) return lines;")
+            self.w("std::string line; while (std::getline(f, line)) lines.push_back(line);")
+            self.w("return lines;")
+            self.depth = self.depth - 1
+            self.w("}")
             self.w("inline void write_file(const std::string& path, const std::string& c) {")
             self.depth = self.depth + 1
             self.w("std::ofstream f(path); f << c;")
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline int exec(const std::string& cmd) { return std::system(cmd.c_str()); }")
+            self.w("")
+            self.w("// ── filesystem ───")
+            self.w("inline bool fs_exists(const std::string& path) { return std::filesystem::exists(path); }")
+            self.w("inline bool fs_is_file(const std::string& path) { return std::filesystem::is_regular_file(path); }")
+            self.w("inline bool fs_is_dir(const std::string& path) { return std::filesystem::is_directory(path); }")
+            self.w("inline void fs_mkdir(const std::string& path) { std::filesystem::create_directories(path); }")
+            self.w("inline std::vector<std::string> fs_list_dir(const std::string& path) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("for (const auto& entry : std::filesystem::directory_iterator(path))")
+            self.w("    r.push_back(entry.path().string());")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline void fs_remove(const std::string& path) { std::filesystem::remove_all(path); }")
+            self.w("inline void fs_rename(const std::string& o, const std::string& n) { std::filesystem::rename(o, n); }")
+            self.w("inline void fs_copy(const std::string& from, const std::string& to) {")
+            self.depth = self.depth + 1
+            self.w("std::filesystem::copy(from, to, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string fs_cwd() { return std::filesystem::current_path().string(); }")
             self.w("")
         }
         if ns != "" {
