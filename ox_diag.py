@@ -186,7 +186,8 @@ def _render_span(span: Span, src: SourceFile, lines: List[str],
     loc = (f'{src.path}:{span.start_line}:{span.start_col}' if src.path
            else f'{span.start_line}:{span.start_col}')
     lines.append(f'{ins}{Style.BOLD} -->{R} {Style.GRAY}{loc}{R}')
-    lines.append(f'{ins}  |')
+    pad = ' ' * len(str(span.start_line))
+    lines.append(f'{ins}{pad} |')
 
     if span.start_line == span.end_line:
         text = src.line_text(span.start_line)
@@ -196,8 +197,8 @@ def _render_span(span: Span, src: SourceFile, lines: List[str],
             arr = [' '] * len(sn)
             for ci, ch in enumerate(text, 1):
                 arr.append('^' if span.start_col <= ci < span.end_col else ' ')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{"".join(arr)}{ac}{R}')
-            lines.append(f'{ins}  |')
+            lines.append(f'{ins}{Style.GRAY}{pad} |{R}{"".join(arr)}{ac}{R}')
+            lines.append(f'{ins}{pad} |')
 
     elif span.start_line < span.end_line and span.start_line > 0:
         text = src.line_text(span.start_line)
@@ -207,21 +208,24 @@ def _render_span(span: Span, src: SourceFile, lines: List[str],
             arr = [' '] * len(sn)
             for ci, _ in enumerate(text, 1):
                 arr.append('^' if ci >= span.start_col else ' ')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{ac}{"".join(arr)}^^^{R}')
+            lines.append(f'{ins}{Style.GRAY}{pad} |{R}{ac}{"".join(arr)}{R}')
 
         for ln in range(span.start_line + 1, span.end_line):
             t = src.line_text(ln)
             if t is not None:
-                lines.append(f'{ins}{Style.GRAY}{ln}{R} | {ac}{t}{R}')
+                ln_s = str(ln)
+                pad = ' ' * len(ln_s)
+                lines.append(f'{ins}{Style.GRAY}{ln_s}{R} | {ac}{t}{R}')
 
         text = src.line_text(span.end_line)
         if text:
             en = str(span.end_line)
+            pad = ' ' * len(en)
             arr = [' '] * len(en)
             for ci, _ in enumerate(text, 1):
                 arr.append('^' if ci <= span.end_col else ' ')
             lines.append(f'{ins}{Style.GRAY}{en}{R} | {text}')
-            lines.append(f'{ins}{Style.GRAY}  |{R}{ac}{"".join(arr)}^^^{R}')
+            lines.append(f'{ins}{Style.GRAY}{pad} |{R}{ac}{"".join(arr)}{R}')
 
 
 # ═══════════════════════════════════════════════════════════════

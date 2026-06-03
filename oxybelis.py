@@ -1647,10 +1647,12 @@ class TypeChecker:
 
     def _type_error(self, expected: str, found: str, node, detail: str = ''):
         sp = self.spans.get(id(node))
-        msg = f"mismatched types{': ' + detail if detail else ''}"
+        msg = f"expected `{expected}`, found `{found}`"
+        notes = []
+        if detail:
+            notes.append((detail, None))
         self.diags.append(Diagnostic(
-            Severity.ERROR, msg, sp, code='E0308',
-            notes=[(f"expected `{expected}`, found `{found}`", None)]
+            Severity.ERROR, msg, sp, code='E0308', notes=notes
         ))
 
     def check(self, prog: Program) -> None:
@@ -2038,13 +2040,15 @@ def fmt_error(src: str, path: str, msg: str, line: int = 0, col: int = 0) -> str
         lines = src.split('\n')
         if 1 <= line <= len(lines):
             source = lines[line - 1]
+            sn = str(line)
+            pad = ' ' * len(sn)
             loc = f" --> {path}:{line}:{col}\n" if path else f" --> {line}:{col}\n"
             return (
                 f"\033[1;31merror\033[0m: {msg}\n"
                 f"{loc}"
-                f"  |\n"
-                f"{line:4} | {source}\n"
-                f"  | {' ' * (col - 1)}\033[1;31m^\033[0m\n"
+                f"{pad} |\n"
+                f"{sn} | {source}\n"
+                f"{pad} | {' ' * (col - 1)}\033[1;31m^\033[0m\n"
             )
     return f"\033[1;31merror\033[0m: {msg}\n"
 
