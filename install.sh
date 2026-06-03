@@ -59,19 +59,28 @@ warn() { printf "  ⚠ \033[33m%s\033[0m\n" "$*"; }
 add_to_path() {
     local dir="$1"
     local profile="${2:-"$HOME/.profile"}"
-    local line="export PATH=\"\$PATH:$dir\""
+    local line="export PATH=\"$dir:\$PATH\""
     if ! echo "$PATH" | tr ':' '\n' | grep -qxF "$dir"; then
         if ! grep -qxF "$line" "$profile" 2>/dev/null; then
             echo "" >> "$profile"
             echo "# Oxybelis" >> "$profile"
             echo "$line" >> "$profile"
-            ok "Added to PATH in $profile"
+            ok "Prepended to PATH in $profile"
         fi
-        export PATH="$PATH:$dir"
+        export PATH="$dir:$PATH"
     else
         ok "$dir already in PATH"
     fi
 }
+
+# Check for existing oxybelis from a different source (e.g. pip)
+if command -v oxybelis &>/dev/null; then
+    existing="$(command -v oxybelis)"
+    if [[ "$existing" != "$BIN_DIR/oxybelis" ]]; then
+        warn "oxybelis already on PATH from: $existing"
+        echo "  The new binary at $BIN_DIR will take priority."
+    fi
+fi
 
 # ── Check prerequisites ───────────────────────────────────────
 printf "\n  \033[32m╔══════════════════════════════════════════╗\033[0m\n"

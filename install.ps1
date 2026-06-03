@@ -37,10 +37,10 @@ function Write-Warn($Msg) { Write-Host "  ⚠ $Msg" -ForegroundColor Yellow }
 function Add-ToPath($Dir) {
     $current = [Environment]::GetEnvironmentVariable('Path', 'User')
     if ($current -split ';' -notcontains $Dir) {
-        $new = if ($current) { "$current;$Dir" } else { $Dir }
+        $new = if ($current) { "$Dir;$current" } else { $Dir }
         [Environment]::SetEnvironmentVariable('Path', $new, 'User')
-        $env:Path = "$env:Path;$Dir"
-        Write-OK "Added $Dir to user PATH"
+        $env:Path = "$Dir;$env:Path"
+        Write-OK "Prepended $Dir to user PATH"
     } else {
         Write-OK "$Dir already in PATH"
     }
@@ -64,6 +64,15 @@ if (-not $have_gpp) {
     Write-Host "  Install via: winget install GCC"
     Write-Host "  Or grab it from: https://winlibs.com/"
 }
+
+# Check for existing oxybelis from a different source (e.g. pip)
+try {
+    $existing = Get-Command oxybelis -ErrorAction Stop
+    if ($existing.Source -ne (Join-Path $BinDir 'oxybelis.exe')) {
+        Write-Warn "oxybelis already on PATH from: $($existing.Source)"
+        Write-Host "  The new binary at $BinDir will take priority."
+    }
+} catch {}
 
 # ── Download ──────────────────────────────────────────────────
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
