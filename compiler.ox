@@ -2018,21 +2018,33 @@ class CodeGen {
         }
         // Forward-declare structs
         var i = 0
+        var node_class_id = -1
         while i < len(prog.stmts) {
             if node_pool[prog.stmts[i]].kind == "ClassDef" {
                 self.w("struct " + node_pool[prog.stmts[i]].name + ";")
+                if node_pool[prog.stmts[i]].name == "Node" { node_class_id = prog.stmts[i] }
             }
             i = i + 1
         }
-        // Check if any class defs exist
+        if node_class_id >= 0 {
+            self.w("")
+            // Emit Node's full definition early so List<Node> globals are valid (libc++ fix)
+            self.gen_class(node_class_id)
+        }
+        // Check if any (other) class defs exist
         var has_class = false; i = 0
         while i < len(prog.stmts) {
-            if node_pool[prog.stmts[i]].kind == "ClassDef" { has_class = true; break }
+            let s = node_pool[prog.stmts[i]]
+            if s.kind == "ClassDef" and (node_class_id < 0 or prog.stmts[i] != node_class_id) {
+                has_class = true; break
+            }
             i = i + 1
         }
         if has_class { self.w("") }
         i = 0
         while i < len(prog.stmts) {
+            // Skip Node class if already emitted early
+            if node_class_id >= 0 and prog.stmts[i] == node_class_id { i = i + 1; continue }
             self.gen_top(prog.stmts[i])
             i = i + 1
         }

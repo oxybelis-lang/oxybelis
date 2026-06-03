@@ -1234,12 +1234,20 @@ class CodeGen:
         if self.module_namespace:
             self.w(f"namespace {self.module_namespace} {{")
             self.depth += 1
+        node_class = None
         for s in prog.stmts:
             if isinstance(s, ClassDef):
                 templ = f"template<{', '.join('typename '+g for g in s.generics)}> " if s.generics else ''
                 self.w(f"{templ}struct {s.name};")
-        if any(isinstance(s, ClassDef) for s in prog.stmts): self.w('')
+                if s.name == 'Node':
+                    node_class = s
+        if node_class:
+            self.w('')
+            self.gen_class(node_class)  # full def early so List<Node> globals are valid
+        if any(isinstance(s, ClassDef) and s is not node_class for s in prog.stmts):
+            self.w('')
         for s in prog.stmts:
+            if s is node_class: continue
             self.gen_top(s)
         if self.module_namespace:
             self.depth -= 1
