@@ -390,9 +390,12 @@ fn report_error(src: str, line: int, col: int, msg: str) -> void {
     while j < col - 1 { indent = indent + " "; j = j + 1 }
     print("error: " + msg)
     print(" --> " + str(line) + ":" + str(col))
-    print("  |")
+    var pad: str = ""
+    j = 0
+    while j < len(str(line)) { pad = pad + " "; j = j + 1 }
+    print(pad + " |")
     print(str(line) + " | " + source_line)
-    print("  | " + indent + "^")
+    print(pad + " | " + indent + "^")
 }
 
 // ── Token type constants ────────────────────────────────────
