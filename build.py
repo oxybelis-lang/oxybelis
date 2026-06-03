@@ -22,7 +22,7 @@ def build():
     os.makedirs(OUT_DIR, exist_ok=True)
 
     for name, script in SCRIPTS:
-        print(f"\n── Building {name} ──")
+        print(f"\n-- Building {name} --")
         subprocess.run([
             sys.executable, '-m', 'nuitka',
             '--onefile',
@@ -43,7 +43,7 @@ def build():
         if os.path.isdir(path):
             shutil.rmtree(path)
 
-    print("\n── Done ──")
+    print("\n-- Done --")
     for entry in sorted(os.listdir(OUT_DIR)):
         size = os.path.getsize(os.path.join(OUT_DIR, entry))
         print(f"  {entry:20s} {size // 1024:>6} KB")

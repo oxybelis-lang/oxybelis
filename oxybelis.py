@@ -649,6 +649,20 @@ class Parser:
                 self.advance()
                 name_tok = self.peek()
                 name = self.expect(TT.IDENT).value
+                # Generic type args on method call: obj.method<Type>(args)
+                if self.check(TT.LT):
+                    saved = self.pos; self.advance()
+                    next_t = self.peek()
+                    type_kw_set = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID}
+                    if (next_t.type == TT.IDENT and next_t.value and next_t.value[0].isupper()) or next_t.type in type_kw_set:
+                        args: PyList[str] = []
+                        while not self.check(TT.GT):
+                            args.append(self.parse_type())
+                            if not self.match_tok(TT.COMMA): break
+                        self.expect(TT.GT)
+                        name = f"{name}<{', '.join(args)}>"
+                    else:
+                        self.pos = saved
                 if self.check(TT.LPAREN):
                     lp = self.peek()
                     self.advance()
@@ -1422,14 +1436,17 @@ class CodeGen:
         if isinstance(node, MethodCall):
             obj  = self.expr(node.obj)
             args = ', '.join(self.expr(a) for a in node.args)
+            mname = map_type(node.name) if '<' in node.name else node.name
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
-                return f"_oxm_{node.obj.name}::{node.name}({args})"
+                return f"_oxm_{node.obj.name}::{mname}({args})"
             if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max'):
                 return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
-            return f"{obj}.{node.name}({args})"
+            return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
             if node.name == 'value' and isinstance(node.obj, (Ident, FnCall)):
-                return f"(*{self.expr(node.obj)})"
+                obj_type = getattr(node.obj, '_type', '')
+                if _base_type(obj_type) == 'Option':
+                    return f"(*{self.expr(node.obj)})"
             return f"{self.expr(node.obj)}.{node.name}"
         if isinstance(node, Index):
             return f"{self.expr(node.obj)}[{self.expr(node.idx)}]"
@@ -1634,6 +1651,11 @@ class TypeChecker:
             self._check_stmt(s)
 
     def _infer_type(self, node) -> str:
+        t = self._infer_type_impl(node)
+        node._type = t
+        return t
+
+    def _infer_type_impl(self, node) -> str:
         if isinstance(node, IntLit):
             return 'int'
         if isinstance(node, FloatLit):
@@ -1648,10 +1670,8 @@ class TypeChecker:
             inner = self._infer_type(node.value)
             return f'Option<{inner}>'
         if isinstance(node, ListLit):
-            if not node.elems:
-                return 'List<void>'
             elem_types = [self._infer_type(e) for e in node.elems]
-            return f'List<{elem_types[0]}>'
+            return f'List<{elem_types[0]}>' if elem_types else 'List<void>'
         if isinstance(node, WildCard):
             return '_'
         if isinstance(node, Ident):
@@ -1748,23 +1768,24 @@ class TypeChecker:
                 mod_name = node.obj.name
                 for arg in node.args:
                     self._infer_type(arg)
-                if node.name in self.modules[mod_name]:
-                    params, ret, fn_node = self.modules[mod_name][node.name]
+                base_name = _base_type(node.name)
+                if base_name in self.modules[mod_name]:
+                    params, ret, fn_node = self.modules[mod_name][base_name]
                     old_generic = set(self.generic_params)
                     if fn_node:
                         for g in fn_node.generics:
                             self.generic_params.add(g)
                     if len(node.args) != len(params):
                         self._error(
-                            f"function `{node.name}` in module `{mod_name}` takes {len(params)} argument{'s' if len(params) != 1 else ''} but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
+                            f"function `{base_name}` in module `{mod_name}` takes {len(params)} argument{'s' if len(params) != 1 else ''} but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
                             node, 'E0060')
                     for i, (arg, (pname, ptype)) in enumerate(zip(node.args, params)):
                         arg_t = self._infer_type(arg)
                         if ptype != 'void' and not self._is_compatible(arg_t, ptype):
-                            self._type_error(ptype, arg_t, arg, f"argument `{pname}` to `{mod_name}.{node.name}`")
+                            self._type_error(ptype, arg_t, arg, f"argument `{pname}` to `{mod_name}.{base_name}`")
                     self.generic_params = old_generic
                     return ret
-                self._error(f"no function named `{node.name}` in module `{mod_name}`", node, 'E0599')
+                self._error(f"no function named `{base_name}` in module `{mod_name}`", node, 'E0599')
                 return 'void'
             obj_t = self._infer_type(node.obj)
             for arg in node.args:
@@ -2206,9 +2227,11 @@ def main():
         with open(cpp_file, 'w', encoding='utf-8') as f:
             f.write(cpp)
         try:
-            subprocess.run([args.cc, '-O3', '-std=c++20', '-mconsole',
-                           cpp_file, '-o', exe_file], check=True)
+            mconsole = ['-mconsole'] if sys.platform == 'win32' else []
+            subprocess.run([args.cc, '-O3', '-std=c++20'] + mconsole +
+                           [cpp_file, '-o', exe_file], check=True)
             print(f"\033[32m✓ {args.source} → {exe_file}\033[0m")
+            subprocess.run([exe_file])
         except subprocess.CalledProcessError:
             print(f"\033[31m✗ Compilation failed (see {cpp_file})\033[0m",
                   file=sys.stderr)

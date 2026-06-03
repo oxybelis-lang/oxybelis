@@ -39,14 +39,35 @@ jobs:
       - name: Install Nuitka
         run: pip install nuitka
 
-      - name: Build binaries
+      - name: Build self-hosting compiler
         shell: bash
         run: |
-          python -m nuitka --onefile --output-filename=oxybelis${{ matrix.ext }} --assume-yes-for-downloads oxybelis.py
-          python -m nuitka --onefile --output-filename=ox-fmt${{ matrix.ext }} --assume-yes-for-downloads ox_fmt.py
-          python -m nuitka --onefile --output-filename=ox-lsp${{ matrix.ext }} --assume-yes-for-downloads ox_lsp.py
-          echo "=== Files after Nuitka ==="
-          ls -la oxybelis* ox-fmt* ox-lsp* 2>/dev/null || true
+          # Use Python compiler to build the self-hosting compiler
+          python oxybelis.py -S compiler.ox > compiler.cpp
+          # Select C++ compiler per platform
+          CXX="g++"
+          MCONSOLE=""
+          if [[ "${{ matrix.os }}" == windows-* ]]; then
+            CXX="g++"
+            MCONSOLE="-mconsole"
+          elif [[ "${{ matrix.os }}" == macos-* ]]; then
+            CXX="clang++"
+          else
+            CXX="g++"
+          fi
+          $CXX -O3 -std=c++20 $MCONSOLE compiler.cpp -o oxybelis${{ matrix.ext }}
+          echo "=== Self-hosting compiler ==="
+          ls -la oxybelis${{ matrix.ext }}
+
+      - name: Build Nuitka extras
+        shell: bash
+        run: |
+          if [ -f ox_fmt.py ] && [ -f ox_lsp.py ]; then
+            python -m nuitka --onefile --output-filename=ox-fmt${{ matrix.ext }} --assume-yes-for-downloads ox_fmt.py
+            python -m nuitka --onefile --output-filename=ox-lsp${{ matrix.ext }} --assume-yes-for-downloads ox_lsp.py
+            echo "=== Nuitka extras ==="
+            ls -la ox-fmt* ox-lsp* 2>/dev/null || true
+          fi
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

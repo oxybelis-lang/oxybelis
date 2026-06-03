@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 #
-# Oxybelis toolchain installer – rustup-like for Unix (Linux / macOS).
+# Oxybelis installer – one-command setup for Linux / macOS.
 #
 # Usage:
-#   curl -fsSL https://oxybelis.dev/install.sh | sh          # auto
-#   ./install.sh                                              # local
-#   ./install.sh --version 0.2.0 --dir ~/.local/oxybelis     # custom
+#   curl -fsSL https://raw.githubusercontent.com/oxybelis-lang/oxybelis/main/install.sh | sh
+#   ./install.sh
+#   ./install.sh --version 0.3.0 --dir ~/.local/oxybelis
+#
+# Prerequisites:
+#   Linux:   g++ (apt install build-essential)
+#   macOS:   clang++ (xcode-select --install)
 #
 
 set -euo pipefail
@@ -14,26 +18,19 @@ set -euo pipefail
 REPO="oxybelis-lang/oxybelis"
 VERSION=""
 INSTALL_DIR=""
-LOCAL_BUILD=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)   VERSION="$2";    shift 2 ;;
         --dir)       INSTALL_DIR="$2"; shift 2 ;;
-        --local|-l)  LOCAL_BUILD=1;   shift ;;
-        --help|-h)   echo "Usage: install.sh [--version X] [--dir PATH] [--local]"; exit 0 ;;
+        --help|-h)   echo "Usage: install.sh [--version X] [--dir PATH]"; exit 0 ;;
         *)           echo "Unknown: $1"; exit 1 ;;
     esac
 done
 
-# Detect repo root for local builds
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "$VERSION" ]]; then VERSION="0.3.0"; fi
 
-if [[ -z "$VERSION" && "$LOCAL_BUILD" -eq 0 ]]; then
-    VERSION="0.3.0"
-fi
-
-# ── Platform detection ────────────────────────────────────────
+# ── Platform ──────────────────────────────────────────────────
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
@@ -44,13 +41,12 @@ case "$ARCH" in
 esac
 
 case "$OS" in
-    linux)   TRIPLE="${BIN_ARCH}-unknown-linux-gnu" ;;
-    darwin)  TRIPLE="${BIN_ARCH}-apple-darwin" ;;
-    msys*|cygwin*) TRIPLE="${BIN_ARCH}-pc-windows-msvc" ;;
+    linux)   TRIPLE="${BIN_ARCH}-unknown-linux-gnu";   CXX_REQ="g++" ;;
+    darwin)  TRIPLE="${BIN_ARCH}-apple-darwin";         CXX_REQ="clang++ (Xcode CLT)" ;;
     *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
-# ── Install paths ─────────────────────────────────────────────
+# ── Paths ─────────────────────────────────────────────────────
 OX_HOME="${INSTALL_DIR:-"$HOME/.oxybelis"}"
 BIN_DIR="$OX_HOME/bin"
 mkdir -p "$BIN_DIR"
@@ -64,9 +60,7 @@ add_to_path() {
     local dir="$1"
     local profile="${2:-"$HOME/.profile"}"
     local line="export PATH=\"\$PATH:$dir\""
-
     if ! echo "$PATH" | tr ':' '\n' | grep -qxF "$dir"; then
-        # Add to shell profile for permanent effect
         if ! grep -qxF "$line" "$profile" 2>/dev/null; then
             echo "" >> "$profile"
             echo "# Oxybelis" >> "$profile"
@@ -79,53 +73,44 @@ add_to_path() {
     fi
 }
 
-# ── Install ───────────────────────────────────────────────────
-echo ""
-printf "  \033[32m╔══════════════════════════════════════════╗\033[0m\n"
-printf "  \033[32m║      Oxybelis Toolchain Installer        ║\033[0m\n"
-printf "  \033[32m╚══════════════════════════════════════════╝\033[0m\n"
-echo ""
+# ── Check prerequisites ───────────────────────────────────────
+printf "\n  \033[32m╔══════════════════════════════════════════╗\033[0m\n"
+printf "  \033[32m║          Oxybelis Installer              ║\033[0m\n"
+printf "  \033[32m╚══════════════════════════════════════════╝\033[0m\n\n"
+
 step "Platform: $OS ($BIN_ARCH)"
-step "Version:  ${VERSION:-local}"
+step "Version:  $VERSION"
 step "Install:  $OX_HOME"
 
-# Check existing
-if [[ -f "$BIN_DIR/oxybelis" ]]; then
-    warn "Oxybelis already installed at $BIN_DIR"
-    read -rp "  Overwrite? [y/N] " reply
-    [[ "$reply" =~ ^[yY] ]] || { echo "  Aborted."; exit 0; }
-fi
-
-if [[ "$LOCAL_BUILD" -eq 1 ]]; then
-    step "Using local build…"
-    RELEASE_DIR="$SCRIPT_DIR/dist/release"
-    for bin in oxybelis ox-fmt ox-lsp; do
-        src="$RELEASE_DIR/$bin"
-        [[ -f "$src" ]] && { cp "$src" "$BIN_DIR/"; chmod +x "$BIN_DIR/$bin"; ok "Copied $bin"; } \
-                       || { src="$RELEASE_DIR/$bin.exe"; [[ -f "$src" ]] && { cp "$src" "$BIN_DIR/"; chmod +x "$BIN_DIR/$bin"; ok "Copied $bin"; } || warn "$bin not found in $RELEASE_DIR"; }
-    done
-else
-    # Download from GitHub
-    BASE="https://github.com/$REPO/releases/download/v$VERSION"
-    ARCHIVE="oxybelis-$TRIPLE.tar.gz"
-    URL="$BASE/$ARCHIVE"
-    TMPDIR="$(mktemp -d)"
-
-    step "Downloading $URL …"
-    if command -v curl &>/dev/null; then
-        curl -fsSL "$URL" -o "$TMPDIR/$ARCHIVE"
-    elif command -v wget &>/dev/null; then
-        wget -q "$URL" -O "$TMPDIR/$ARCHIVE"
-    else
-        echo "  Need curl or wget to download."; exit 1
+if ! command -v g++ &>/dev/null && ! command -v clang++ &>/dev/null; then
+    warn "C++ compiler not found – Oxybelis needs it to compile programs."
+    if [[ "$OS" == "linux" ]]; then
+        echo "  Install: apt install build-essential  (or your distro's equivalent)"
+    elif [[ "$OS" == "darwin" ]]; then
+        echo "  Install: xcode-select --install"
     fi
-
-    step "Extracting…"
-    tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
-    cp "$TMPDIR"/oxybelis* "$BIN_DIR/" 2>/dev/null || true
-    chmod +x "$BIN_DIR"/* 2>/dev/null || true
-    rm -rf "$TMPDIR"
 fi
+
+# ── Download ──────────────────────────────────────────────────
+BASE="https://github.com/$REPO/releases/download/v$VERSION"
+ARCHIVE="oxybelis-$TRIPLE.tar.gz"
+URL="$BASE/$ARCHIVE"
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+step "Downloading $URL …"
+if command -v curl &>/dev/null; then
+    curl -fsSL "$URL" -o "$TMPDIR/$ARCHIVE"
+elif command -v wget &>/dev/null; then
+    wget -q "$URL" -O "$TMPDIR/$ARCHIVE"
+else
+    echo "  Need curl or wget to download."; exit 1
+fi
+
+step "Extracting…"
+tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
+cp "$TMPDIR"/oxybelis* "$BIN_DIR/" 2>/dev/null || true
+chmod +x "$BIN_DIR"/* 2>/dev/null || true
 
 # Add to PATH
 case "$SHELL" in
@@ -136,24 +121,21 @@ esac
 
 # Verify
 echo ""
-step "Verifying installation…"
-for tool in oxybelis ox-fmt ox-lsp; do
-    path="$BIN_DIR/$tool"
-    if [[ -f "$path" ]]; then
-        size="$(du -h "$path" | cut -f1)"
-        ok "$tool — $size"
-    else
-        warn "$tool not found"
+if [[ -f "$BIN_DIR/oxybelis" ]]; then
+    size="$(du -h "$BIN_DIR/oxybelis" | cut -f1)"
+    ok "oxybelis — $size"
+    printf "\n  \033[32m🎉 Oxybelis installed!\033[0m\n\n"
+    echo '  Quick start:'
+    echo '    echo '\''print("hello world")'\'' > hello.ox'
+    echo '    oxybelis hello.ox'
+    echo ""
+    if [[ "$OS" == "linux" ]]; then
+        echo '  Need g++?  apt install build-essential'
+    elif [[ "$OS" == "darwin" ]]; then
+        echo '  Need clang++?  xcode-select --install'
     fi
-done
-
-echo ""
-printf "  \033[32m🎉 Oxybelis installed successfully!\033[0m\n"
-echo ""
-echo "  You can now run:"
-echo "    oxybelis --help"
-echo "    ox-fmt    --help"
-echo "    ox-lsp    --help"
-echo ""
-printf "  \033[33m  To uninstall, remove $OX_HOME\033[0m\n"
-echo ""
+    echo "  Uninstall: rm -rf $OX_HOME"
+else
+    echo "  ✗ Installation failed: oxybelis not found"
+    exit 1
+fi

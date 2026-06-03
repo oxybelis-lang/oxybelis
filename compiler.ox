@@ -17,7 +17,7 @@ class Node {
     obj: int
     start: int
     end: int
-    value: int
+    inner: int
     cond: int
     iterable: int
     subject: int
@@ -57,7 +57,7 @@ class Node {
 fn alloc_node() -> int {
     let n = Node { kind: "",
                    left: -1, right: -1, operand: -1, func: -1, obj: -1,
-                   start: -1, end: -1, value: -1, cond: -1,
+                    start: -1, end: -1, inner: -1, cond: -1,
                    iterable: -1, subject: -1, target: -1,
                    params: [], args: [], fields: [], elems: [],
                    body: [], then_body: [],
@@ -122,7 +122,7 @@ fn node_var_decl(name: str, type_ann: str, value: int, is_mutable: bool) -> int 
     node_pool[id].kind = "VarDecl"
     node_pool[id].name = name
     node_pool[id].type_ann = type_ann
-    node_pool[id].value = value
+    node_pool[id].inner = value
     node_pool[id].is_mutable = is_mutable
     return id
 }
@@ -131,7 +131,7 @@ fn node_assign(target: int, value: int, op: str) -> int {
     let id = alloc_node()
     node_pool[id].kind = "Assignment"
     node_pool[id].target = target
-    node_pool[id].value = value
+    node_pool[id].inner = value
     node_pool[id].op = op
     return id
 }
@@ -139,7 +139,7 @@ fn node_assign(target: int, value: int, op: str) -> int {
 fn node_return(value: int) -> int {
     let id = alloc_node()
     node_pool[id].kind = "ReturnStmt"
-    node_pool[id].value = value
+    node_pool[id].inner = value
     return id
 }
 
@@ -194,7 +194,7 @@ fn node_match(subject: int, arms: List<int>) -> int {
 fn node_expr_stmt(expr: int) -> int {
     let id = alloc_node()
     node_pool[id].kind = "ExprStmt"
-    node_pool[id].value = expr
+    node_pool[id].inner = expr
     return id
 }
 
@@ -292,7 +292,7 @@ fn node_none_lit() -> int {
 fn node_some_lit(value: int) -> int {
     let id = alloc_node()
     node_pool[id].kind = "SomeLit"
-    node_pool[id].value = value
+    node_pool[id].inner = value
     return id
 }
 
@@ -344,7 +344,7 @@ fn node_field(name: str, value: int) -> int {
     let id = alloc_node()
     node_pool[id].kind = "Field"
     node_pool[id].name = name
-    node_pool[id].value = value
+    node_pool[id].inner = value
     return id
 }
 
@@ -500,13 +500,13 @@ fn keyword_type(word: str) -> str {
 // ── Token ──────────────────────────────────────────────────
 class Token {
     type_name: str
-    value: str
+    lexeme: str
     line: int
     col: int
 }
 
 fn make_token(type_name: str, value: str, line: int, col: int) -> Token {
-    return Token { type_name: type_name, value: value, line: line, col: col }
+    return Token { type_name: type_name, lexeme: value, line: line, col: col }
 }
 
 // ── Lexer ──────────────────────────────────────────────────
@@ -715,7 +715,7 @@ class Parser {
         }
         if not found {
             report_error(self.src, t.line, t.col,
-                "Expected " + type_names[0] + ", got " + t.type_name + " (" + t.value + ")")
+                "Expected " + type_names[0] + ", got " + t.type_name + " (" + t.lexeme + ")")
             exit(1)
         }
         return self.advance()
@@ -723,7 +723,7 @@ class Parser {
 
     fn match_tok(self, type_names: List<str>) -> Token {
         if self.check(type_names) { return self.advance() }
-        return Token { type_name: "", value: "", line: 0, col: 0 }
+        return Token { type_name: "", lexeme: "", line: 0, col: 0 }
     }
 
     fn matched(self, tok: Token) -> bool { return tok.type_name != "" }
@@ -766,9 +766,9 @@ class Parser {
 
     fn parse_import(self) -> int {
         self.expect([TT_IMPORT])
-        let path: List<int> = [node_str_id(self.expect([TT_IDENT]).value)]
+        let path: List<int> = [node_str_id(self.expect([TT_IDENT]).lexeme)]
         while self.matched(self.match_tok([TT_DOT])) {
-            push(path, node_str_id(self.expect([TT_IDENT]).value))
+            push(path, node_str_id(self.expect([TT_IDENT]).lexeme))
         }
         return node_import(path)
     }
@@ -777,7 +777,7 @@ class Parser {
         let gs: List<int> = []
         if self.matched(self.match_tok([TT_LT])) {
             while not self.check([TT_GT]) {
-                push(gs, node_str_id(self.expect([TT_IDENT]).value))
+                push(gs, node_str_id(self.expect([TT_IDENT]).lexeme))
                 if not self.matched(self.match_tok([TT_COMMA])) { break }
             }
             self.expect([TT_GT])
@@ -787,7 +787,7 @@ class Parser {
 
     fn parse_fn(self, is_pub: bool, is_lazy: bool) -> int {
         self.expect([TT_FN])
-        let name: str = self.expect([TT_IDENT]).value
+        let name: str = self.expect([TT_IDENT]).lexeme
         let generics: List<int> = self.parse_generics()
         self.expect([TT_LPAREN])
         let params: List<int> = []
@@ -795,12 +795,12 @@ class Parser {
 
         if not self.check([TT_RPAREN]) {
             let fp = self.peek(0)
-            if fp.value == "self" and fp.type_name == TT_IDENT {
+            if fp.lexeme == "self" and fp.type_name == TT_IDENT {
                 has_self = true; self.advance()
                 self.match_tok([TT_COMMA])
             }
             while not self.check([TT_RPAREN, TT_EOF]) {
-                let pname: str = self.expect([TT_IDENT]).value
+                let pname: str = self.expect([TT_IDENT]).lexeme
                 self.expect([TT_COLON])
                 let ptype: str = self.parse_type()
                 push(params, node_param(pname, ptype))
@@ -816,7 +816,7 @@ class Parser {
 
     fn parse_class(self) -> int {
         self.expect([TT_CLASS])
-        let name: str = self.expect([TT_IDENT]).value
+        let name: str = self.expect([TT_IDENT]).lexeme
         let generics: List<int> = self.parse_generics()
         self.expect([TT_LBRACE])
         let fields: List<int> = []
@@ -833,7 +833,7 @@ class Parser {
             if self.check([TT_FN]) {
                 push(methods, self.parse_fn(has_pub, has_lazy))
             } else {
-                let fname: str = self.expect([TT_IDENT]).value
+                let fname: str = self.expect([TT_IDENT]).lexeme
                 self.expect([TT_COLON])
                 let ftype: str = self.parse_type()
                 push(fields, node_param(fname, ftype))
@@ -852,7 +852,7 @@ class Parser {
         if t.type_name == TT_T_STR   { self.advance(); return "str" }
         if t.type_name == TT_T_VOID  { self.advance(); return "void" }
         if t.type_name == TT_IDENT {
-            let name: str = self.advance().value
+            let name: str = self.advance().lexeme
             if self.matched(self.match_tok([TT_LT])) {
                 let args: List<str> = []
                 while not self.check([TT_GT]) {
@@ -904,7 +904,7 @@ class Parser {
         let expr: int = self.parse_expr()
         if self.check([TT_ASSIGN, TT_PLUS_ASSIGN, TT_MINUS_ASSIGN,
                        TT_STAR_ASSIGN, TT_SLASH_ASSIGN]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let rhs: int = self.parse_expr()
             return node_assign(expr, rhs, op)
         }
@@ -913,7 +913,7 @@ class Parser {
 
     fn parse_var_decl(self) -> int {
         let is_mut: bool = self.advance().type_name == TT_VAR
-        let name: str = self.expect([TT_IDENT]).value
+        let name: str = self.expect([TT_IDENT]).lexeme
         var type_ann: str = ""
         if self.matched(self.match_tok([TT_COLON])) { type_ann = self.parse_type() }
         self.expect([TT_ASSIGN])
@@ -945,7 +945,7 @@ class Parser {
 
     fn parse_for(self) -> int {
         self.expect([TT_FOR])
-        let var_name: str = self.expect([TT_IDENT]).value
+        let var_name: str = self.expect([TT_IDENT]).lexeme
         self.expect([TT_IN])
         let iterable: int = self.parse_expr()
         let body: List<int> = self.parse_block()
@@ -1002,7 +1002,7 @@ class Parser {
     fn parse_or(self) -> int {
         var left: int = self.parse_and()
         while self.check([TT_OR]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let right: int = self.parse_and()
             left = node_bin_op(op, left, right)
         }
@@ -1012,7 +1012,7 @@ class Parser {
     fn parse_and(self) -> int {
         var left: int = self.parse_compare()
         while self.check([TT_AND]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let right: int = self.parse_compare()
             left = node_bin_op(op, left, right)
         }
@@ -1022,7 +1022,7 @@ class Parser {
     fn parse_compare(self) -> int {
         var left: int = self.parse_add()
         while self.check([TT_EQ, TT_NEQ, TT_LT, TT_GT, TT_LEQ, TT_GEQ]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let right: int = self.parse_add()
             left = node_bin_op(op, left, right)
         }
@@ -1032,7 +1032,7 @@ class Parser {
     fn parse_add(self) -> int {
         var left: int = self.parse_mul()
         while self.check([TT_PLUS, TT_MINUS]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let right: int = self.parse_mul()
             left = node_bin_op(op, left, right)
         }
@@ -1042,7 +1042,7 @@ class Parser {
     fn parse_mul(self) -> int {
         var left: int = self.parse_unary()
         while self.check([TT_STAR, TT_SLASH, TT_PERCENT]) {
-            let op: str = self.advance().value
+            let op: str = self.advance().lexeme
             let right: int = self.parse_unary()
             left = node_bin_op(op, left, right)
         }
@@ -1061,7 +1061,43 @@ class Parser {
         while true {
             if self.check([TT_DOT]) {
                 self.advance()
-                let name: str = self.expect([TT_IDENT]).value
+                let name: str = self.expect([TT_IDENT]).lexeme
+                // Generic type args on method call: obj.method<Type>(args)
+                if self.check([TT_LT]) {
+                    let saved = self.pos; self.advance()
+                    let next_t = self.peek(0)
+                    let type_kw = next_t.type_name == TT_T_INT or next_t.type_name == TT_T_FLOAT or
+                                  next_t.type_name == TT_T_BOOL or next_t.type_name == TT_T_STR or
+                                  next_t.type_name == TT_T_VOID
+                    let caps = next_t.type_name == TT_IDENT and len(next_t.lexeme) > 0
+                    if caps {
+                        let ch: str = str_get(next_t.lexeme, 0)
+                        let uc: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                        caps = false
+                        var ui = 0
+                        while ui < len(uc) {
+                            if ch == str_get(uc, ui) { caps = true; break }
+                            ui = ui + 1
+                        }
+                    }
+                    if type_kw or caps {
+                        let args: List<str> = []
+                        while not self.check([TT_GT]) {
+                            push(args, self.parse_type())
+                            if not self.matched(self.match_tok([TT_COMMA])) { break }
+                        }
+                        self.expect([TT_GT])
+                        name = name + "<" + args[0]
+                        var i = 1
+                        while i < len(args) {
+                            name = name + ", " + args[i]
+                            i = i + 1
+                        }
+                        name = name + ">"
+                    } else {
+                        self.pos = saved
+                    }
+                }
                 if self.check([TT_LPAREN]) {
                     self.advance()
                     let args: List<int> = []
@@ -1098,9 +1134,9 @@ class Parser {
 
     fn parse_primary(self) -> int {
         let t = self.peek(0)
-        if t.type_name == TT_INT_LIT   { self.advance(); return node_int_lit(to_int(t.value)) }
-        if t.type_name == TT_FLOAT_LIT { self.advance(); return node_float_lit(to_float(t.value)) }
-        if t.type_name == TT_STR_LIT   { self.advance(); return node_str_lit(t.value) }
+        if t.type_name == TT_INT_LIT   { self.advance(); return node_int_lit(to_int(t.lexeme)) }
+        if t.type_name == TT_FLOAT_LIT { self.advance(); return node_float_lit(to_float(t.lexeme)) }
+        if t.type_name == TT_STR_LIT   { self.advance(); return node_str_lit(t.lexeme) }
         if t.type_name == TT_TRUE      { self.advance(); return node_bool_lit(true) }
         if t.type_name == TT_FALSE     { self.advance(); return node_bool_lit(false) }
         if t.type_name == TT_NONE_KW   { self.advance(); return node_none_lit() }
@@ -1125,13 +1161,65 @@ class Parser {
 
         // Identifier or struct literal
         if t.type_name == TT_IDENT {
-            let name: str = self.advance().value
+            let name: str = self.advance().lexeme
+            // Generic type arguments on calls/constructors: Ident<Type, ...>
+            if self.check([TT_LT]) {
+                let saved = self.pos; self.advance()
+                let next_t = self.peek(0)
+                let type_kw = next_t.type_name == TT_T_INT or next_t.type_name == TT_T_FLOAT or
+                              next_t.type_name == TT_T_BOOL or next_t.type_name == TT_T_STR or
+                              next_t.type_name == TT_T_VOID
+                let caps = next_t.type_name == TT_IDENT and len(next_t.lexeme) > 0
+                if caps {
+                    let ch: str = str_get(next_t.lexeme, 0)
+                    let uc: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    caps = false
+                    var ui = 0
+                    while ui < len(uc) {
+                        if ch == str_get(uc, ui) { caps = true; break }
+                        ui = ui + 1
+                    }
+                }
+                if type_kw or caps {
+                    let args: List<str> = []
+                    while not self.check([TT_GT]) {
+                        push(args, self.parse_type())
+                        if not self.matched(self.match_tok([TT_COMMA])) { break }
+                    }
+                    self.expect([TT_GT])
+                    var full_name: str = name + "<" + args[0]
+                    var i = 1
+                    while i < len(args) {
+                        full_name = full_name + ", " + args[i]
+                        i = i + 1
+                    }
+                    full_name = full_name + ">"
+                    if self.check([TT_LBRACE]) {
+                        let saved2 = self.pos; self.advance()
+                        if self.check([TT_IDENT]) and self.peek(1).type_name == TT_COLON {
+                            let flds: List<int> = []
+                            while not self.check([TT_RBRACE, TT_EOF]) {
+                                let fn_name: str = self.expect([TT_IDENT]).lexeme
+                                self.expect([TT_COLON])
+                                let fv: int = self.parse_expr()
+                                push(flds, node_field(fn_name, fv))
+                                if not self.matched(self.match_tok([TT_COMMA])) { break }
+                            }
+                            self.expect([TT_RBRACE])
+                            return node_struct_lit(full_name, flds)
+                        }
+                        self.pos = saved2
+                    }
+                    return node_ident(full_name)
+                }
+                self.pos = saved
+            }
             if self.check([TT_LBRACE]) {
                 let saved = self.pos; self.advance()
                 if self.check([TT_IDENT]) and self.peek(1).type_name == TT_COLON {
                     let flds: List<int> = []
                     while not self.check([TT_RBRACE, TT_EOF]) {
-                        let fn_name: str = self.expect([TT_IDENT]).value
+                        let fn_name: str = self.expect([TT_IDENT]).lexeme
                         self.expect([TT_COLON])
                         let fv: int = self.parse_expr()
                         push(flds, node_field(fn_name, fv))
@@ -1150,7 +1238,7 @@ class Parser {
         if t.type_name == TT_T_INT or t.type_name == TT_T_FLOAT or
            t.type_name == TT_T_BOOL or t.type_name == TT_T_STR or
            t.type_name == TT_T_VOID {
-            self.advance(); return node_ident(t.value)
+            self.advance(); return node_ident(t.lexeme)
         }
 
         report_error(self.src, t.line, t.col, "Unexpected token " + t.type_name + " in expression")
@@ -1265,11 +1353,12 @@ class CodeGen {
             return "false"
         }
         if node.kind == "NoneLit"  { return "std::nullopt" }
-        if node.kind == "SomeLit"  { return "Some(" + self.expr(node.value) + ")" }
+        if node.kind == "SomeLit"  { return "Some(" + self.expr(node.inner) + ")" }
         if node.kind == "TryOp"    { return "_ox_try(" + self.expr(node.operand) + ")" }
         if node.kind == "WildCard" { return "_" }
         if node.kind == "Ident" {
             if node.name == "self" and self.in_class != "" { return "(*this)" }
+            if str_contains(node.name, "<") { return map_type(node.name) }
             return node.name
         }
         if node.kind == "BinOp" {
@@ -1282,8 +1371,11 @@ class CodeGen {
             return "(" + node.op + self.expr(node.operand) + ")"
         }
         if node.kind == "FnCall" {
-            let fn_name: str = self.expr(node.func)
             let func_node = node_pool[node.func]
+            var fn_name: str = self.expr(node.func)
+            if func_node.kind == "Ident" and str_contains(func_node.name, "<") {
+                fn_name = map_type(func_node.name)
+            }
             if func_node.kind == "Ident" and func_node.name == "Ok" {
                 return "Ok(" + self.expr(node.args[0]) + ")"
             }
@@ -1314,15 +1406,17 @@ class CodeGen {
                 if self.modules[mi] == obj_str { is_mod = true; break }
                 mi = mi + 1
             }
+            var mname: str = node.name
+            if str_contains(node.name, "<") { mname = map_type(node.name) }
             if is_mod {
-                return "_oxm_" + obj_str + "::" + node.name + "(" + as + ")"
+                return "_oxm_" + obj_str + "::" + mname + "(" + as + ")"
             }
             // Built-in list chaining methods
             if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" {
                 if as != "" { return "_ox_" + node.name + "(" + obj_str + ", " + as + ")" }
                 return "_ox_" + node.name + "(" + obj_str + ")"
             }
-            return obj_str + "." + node.name + "(" + as + ")"
+            return obj_str + "." + mname + "(" + as + ")"
         }
         if node.kind == "Attr" {
             // Option<T>.value → *expr   (for Ident, FnCall, MethodCall)
@@ -1353,7 +1447,7 @@ class CodeGen {
             while i < len(node.fields) {
                 if i > 0 { fs = fs + ", " }
                 let f = node_pool[node.fields[i]]
-                fs = fs + "." + f.name + "=" + self.expr(f.value)
+                fs = fs + "." + f.name + "=" + self.expr(f.inner)
                 i = i + 1
             }
             return node.type_name + "{" + fs + "}"
@@ -1372,8 +1466,8 @@ class CodeGen {
         if node.kind == "VarDecl"       { self.gen_var_decl(node_id) }
         elif node.kind == "Assignment"  { self.gen_assign(node_id) }
         elif node.kind == "ReturnStmt" {
-            if node.value == -1 { self.w("return;") }
-            else { self.w("return " + self.expr(node.value) + ";") }
+            if node.inner == -1 { self.w("return;") }
+            else { self.w("return " + self.expr(node.inner) + ";") }
         }
         elif node.kind == "BreakStmt"    { self.w("break;") }
         elif node.kind == "ContinueStmt" { self.w("continue;") }
@@ -1381,14 +1475,14 @@ class CodeGen {
         elif node.kind == "ForStmt"      { self.gen_for(node_id) }
         elif node.kind == "WhileStmt"    { self.gen_while(node_id) }
         elif node.kind == "MatchStmt"    { self.gen_match(node_id) }
-        elif node.kind == "ExprStmt"     { self.w(self.expr(node.value) + ";") }
+        elif node.kind == "ExprStmt"     { self.w(self.expr(node.inner) + ";") }
         elif node.kind == "FnDef"        { self.gen_fn(node_id) }
         else { self.w("/* unhandled " + node.kind + " */") }
     }
 
     fn gen_var_decl(self, node_id: int) -> void {
         let node = node_pool[node_id]
-        let val: str = self.expr(node.value)
+        let val: str = self.expr(node.inner)
         if node.type_ann != "" {
             self.w(map_type(node.type_ann) + " " + node.name + " = " + val + ";")
         } else {
@@ -1398,7 +1492,7 @@ class CodeGen {
 
     fn gen_assign(self, node_id: int) -> void {
         let node = node_pool[node_id]
-        self.w(self.expr(node.target) + " " + node.op + " " + self.expr(node.value) + ";")
+        self.w(self.expr(node.target) + " " + node.op + " " + self.expr(node.inner) + ";")
     }
 
     fn gen_if(self, node_id: int) -> void {
@@ -2095,20 +2189,24 @@ fn compile_source(src: str, source_path: str) -> int {
 fn main() -> void {
     let cli_args: List<str> = args()
     if len(cli_args) < 2 {
-        print("Usage: compiler.ox <source.ox>")
+        print("Usage: oxybelis <source.ox> [--cc CXX] [--cflags FLAGS] [-o FILE] [-S]")
         exit(1)
     }
     let source_path: str = cli_args[1]
     var output_path: str = ""
     var do_compile = true
     var emit_cpp = false
+    var cc: str = "g++"
+    var cflags: str = "-O3 -std=c++20"
 
-    if len(cli_args) >= 3 {
-        if cli_args[2] == "-o" and len(cli_args) >= 4 {
-            output_path = cli_args[3]
-            do_compile = false
-        }
-        if cli_args[2] == "-S" { emit_cpp = true; do_compile = false }
+    var ai = 2
+    while ai < len(cli_args) {
+        if cli_args[ai] == "-o" and ai + 1 < len(cli_args) {
+            output_path = cli_args[ai + 1]; ai = ai + 1
+        } elif cli_args[ai] == "-S" { emit_cpp = true; do_compile = false }
+        elif cli_args[ai] == "--cc" and ai + 1 < len(cli_args) { cc = cli_args[ai + 1]; ai = ai + 1 }
+        elif cli_args[ai] == "--cflags" and ai + 1 < len(cli_args) { cflags = cli_args[ai + 1]; ai = ai + 1 }
+        ai = ai + 1
     }
 
     let src: str = read_file(source_path)
@@ -2138,9 +2236,14 @@ fn main() -> void {
         let cpp_file: str = exe_name + ".cpp"
         let exe_file: str = exe_name + ".exe"
         write_file(cpp_file, cpp)
-        let status = exec("g++ -O3 -std=c++20 -mconsole " + cpp_file + " -o " + exe_file)
+        // Auto-detect -mconsole on Windows (paths with backslashes)
+        var mconsole: str = ""
+        var j = 0
+        while j < len(cpp_file) { if str_get(cpp_file, j) == "\\" { mconsole = " -mconsole"; break }; j = j + 1 }
+        let status = exec(cc + " " + cflags + mconsole + " " + cpp_file + " -o " + exe_file)
         if status == 0 {
             print("✓ " + source_path + " → " + exe_file)
+            exec(exe_file)
         } else {
             print("✗ Compilation failed (see " + cpp_file + ")")
             exit(1)
