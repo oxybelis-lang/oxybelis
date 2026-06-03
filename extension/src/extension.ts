@@ -12,16 +12,24 @@ function log(msg: string) {
   if (outputChannel) outputChannel.appendLine(msg);
 }
 
-function findExe(name: string, extPath: string): string | null {
+function findExe(name: string, extPath: string, settingPath?: string): string | null {
+  if (settingPath) {
+    const val = vscode.workspace.getConfiguration('oxybelis').get<string>(settingPath, '');
+    if (val && fs.existsSync(val)) return val;
+  }
   const local = path.join(extPath, '..', '..', 'dist', 'release', name + '.exe');
   if (fs.existsSync(local)) return local;
-  const installed = path.join(process.env.LOCALAPPDATA || '', 'oxybelis', 'bin', name + '.exe');
-  if (fs.existsSync(installed)) return installed;
+  const localPy = path.join(extPath, '..', '..', 'src', name + '.py');
+  if (fs.existsSync(localPy)) return localPy;
+  const binDir = path.join(process.env.LOCALAPPDATA || process.env.HOME || '', 'oxybelis', 'bin');
+  for (const ext of ['.exe', '.bat', '']) {
+    const full = path.join(binDir, name + ext);
+    if (fs.existsSync(full)) return full;
+  }
   try {
     const r = execFileSync('where.exe', [name], { encoding: 'utf-8', timeout: 5000 });
     for (const line of r.trim().split(/\r?\n/)) {
-      const ext = path.extname(line).toLowerCase();
-      if (ext === '.exe' && fs.existsSync(line)) return line;
+      if (fs.existsSync(line)) return line;
     }
   } catch { /* ignore */ }
   return null;
@@ -32,9 +40,9 @@ export function activate(context: vscode.ExtensionContext) {
   outputChannel.show(true);
   log('=== Oxybelis extension activating ===');
 
-  const oxybelisBin = findExe('oxybelis', context.extensionPath);
-  const oxfmtBin = findExe('ox-fmt', context.extensionPath);
-  const oxlspBin = findExe('ox-lsp', context.extensionPath);
+  const oxybelisBin = findExe('oxybelis', context.extensionPath, 'compiler.oxybelisPath');
+  const oxfmtBin = findExe('ox-fmt', context.extensionPath, 'formatter.serverPath');
+  const oxlspBin = findExe('ox-lsp', context.extensionPath, 'lsp.serverPath');
   log(`oxybelis: ${oxybelisBin || 'NOT FOUND'}`);
   log(`ox-fmt:   ${oxfmtBin || 'NOT FOUND'}`);
   log(`ox-lsp:   ${oxlspBin || 'NOT FOUND'}`);
@@ -42,12 +50,12 @@ export function activate(context: vscode.ExtensionContext) {
   diagCollection = vscode.languages.createDiagnosticCollection('oxybelis');
   context.subscriptions.push(diagCollection);
 
-  // ── Diagnostics on save (always registered as fallback) ──
-  if (oxybelisBin) {
+  // ── Diagnostics on save (via ox-lsp check) ──
+  if (oxlspBin) {
     context.subscriptions.push(
       vscode.workspace.onDidSaveTextDocument(async (doc) => {
         if (doc.languageId !== 'oxybelis') return;
-        runTypeCheck(doc.uri.fsPath, oxybelisBin);
+        runCheck(doc.uri.fsPath, oxlspBin);
       })
     );
   }
@@ -76,8 +84,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('oxybelis.check', () => {
       const ed = vscode.window.activeTextEditor;
-      if (!ed || !oxybelisBin) return;
-      runTypeCheck(ed.document.fileName, oxybelisBin);
+      if (!ed || !oxlspBin) return;
+      runCheck(ed.document.fileName, oxlspBin);
     })
   );
 
@@ -135,6 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
     const clientOptions: LanguageClientOptions = {
       documentSelector: [{ scheme: 'file', language: 'oxybelis' }],
       outputChannel,
+
     };
     client = new LanguageClient('oxybelis', 'Oxybelis Language Server', serverOptions, clientOptions);
     client.onDidChangeState((e) => {
@@ -150,19 +159,19 @@ export function activate(context: vscode.ExtensionContext) {
   }
 }
 
-function runTypeCheck(fileName: string, binPath: string) {
+function runCheck(fileName: string, lspBin: string) {
   const uri = vscode.Uri.file(fileName);
-  diagCollection.set(uri, undefined); // clear previous
+  diagCollection.set(uri, undefined);
   try {
-    const out = execFileSync(binPath, [fileName, '--check'], { encoding: 'utf-8', timeout: 30000 });
-    log(`Check passed: ${fileName}`);
-    vscode.window.showInformationMessage('No errors found');
+    const out = execFileSync(lspBin, ['check', fileName], { encoding: 'utf-8', timeout: 30000 });
+    if (out.includes('no errors')) {
+      log(`Check passed: ${fileName}`);
+    }
   } catch (e: any) {
     const raw = e.stderr || e.stdout || e.message;
     log(`Check errors:\n${stripAnsi(raw)}`);
-    const diags = parseDiagnostics(raw, fileName);
+    const diags = parseDiagnostics(raw);
     diagCollection.set(uri, diags);
-    vscode.window.showWarningMessage(`${diags.length} error(s) found`);
   }
 }
 
@@ -170,60 +179,39 @@ function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-function parseDiagnostics(text: string, fileName: string): vscode.Diagnostic[] {
+function parseDiagnostics(text: string): vscode.Diagnostic[] {
   const diags: vscode.Diagnostic[] = [];
   const clean = stripAnsi(text);
-  const lines = clean.split('\n');
+  const errRe = /\berror\[(E\d+)\]:\s*(.+)/g;
+  const warnRe = /\bwarning\[(W\d+)\]:\s*(.+)/g;
+  const locRe = /-->\s*\S+:(\d+):(\d+)/;
 
-  let currentError: string | null = null;
-  let currentMsg: string[] = [];
-  let currentLine = 0;
-  let currentCol = 0;
+  let lines = clean.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    let m: RegExpExecArray | null;
+    let isWarning = false;
+    const errMatch = errRe.exec(lines[i]);
+    const warnMatch = warnRe.exec(lines[i]);
+    let code = '', msg = '';
+    if (errMatch) { code = errMatch[1]; msg = errMatch[2]; }
+    else if (warnMatch) { code = warnMatch[1]; msg = warnMatch[2]; isWarning = true; }
+    else { i++; continue; }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    const errMatch = line.match(/\[(E\d+)\]:\s*(.+)/);
-    if (errMatch) {
-      if (currentError) {
-        diags.push(makeDiag(currentError, currentMsg.join('\n'), currentLine, currentCol));
-      }
-      currentError = errMatch[1];
-      currentMsg = [errMatch[2]];
-
-      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        const locMatch = lines[j].match(/-->.*?(\d+):(\d+)/);
-        if (locMatch) {
-          currentLine = parseInt(locMatch[1]) - 1;
-          currentCol = parseInt(locMatch[2]) - 1;
-          break;
-        }
-        const trimmed = lines[j].trim();
-        if (trimmed) currentMsg.push(trimmed);
-      }
-      i += 4;
+    let line = 0, col = 0;
+    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      const loc = lines[j].match(locRe);
+      if (loc) { line = parseInt(loc[1]) - 1; col = parseInt(loc[2]) - 1; break; }
     }
-  }
-  if (currentError) {
-    diags.push(makeDiag(currentError, currentMsg.join('\n'), currentLine, currentCol));
-  }
 
-  if (diags.length === 0) {
-    const simpleRegex = /E(\d+).*?(\d+):(\d+)/g;
-    let m;
-    while ((m = simpleRegex.exec(clean)) !== null) {
-      diags.push(makeDiag(m[1], 'type error', parseInt(m[2]) - 1, parseInt(m[3]) - 1));
-    }
+    const sev = isWarning ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error;
+    const range = new vscode.Range(line, col, line, col + 20);
+    const diag = new vscode.Diagnostic(range, `[${code}] ${msg}`, sev);
+    diag.source = 'oxybelis';
+    diags.push(diag);
+    i++;
   }
-
   return diags;
-}
-
-function makeDiag(code: string, msg: string, line: number, col: number): vscode.Diagnostic {
-  const range = new vscode.Range(line, col, line, col + 20);
-  const diag = new vscode.Diagnostic(range, `[${code}] ${msg}`, vscode.DiagnosticSeverity.Error);
-  diag.source = 'oxybelis';
-  return diag;
 }
 
 export function deactivate(): Thenable<void> | undefined {

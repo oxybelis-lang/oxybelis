@@ -10,3 +10,6 @@ src/**/*.test.ts
 *.vsix
 **/.eslintrc
 **/node_modules/**
+!**/node_modules/**/*.js
+!**/node_modules/**/*.json
+!**/node_modules/**/*.sh

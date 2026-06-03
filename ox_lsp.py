@@ -131,9 +131,13 @@ def get_diagnostics(source: str) -> PyList[dict]:
 
     lsp_diags = []
     for d in diags:
+        msg = d.message
+        if d.notes:
+            note_msgs = [n[0] for n in d.notes]
+            msg += ' — ' + '; '.join(note_msgs)
         diag: dict = {
             'severity': _SEV_MAP.get(d.severity, 1),
-            'message': d.message,
+            'message': msg,
             'source': 'oxybelis',
         }
         if d.code:
@@ -148,21 +152,6 @@ def get_diagnostics(source: str) -> PyList[dict]:
                 'start': {'line': 0, 'character': 0},
                 'end': {'line': 0, 'character': 1},
             }
-        if d.notes:
-            related = []
-            for note_msg, note_span in d.notes:
-                related.append({
-                    'message': note_msg,
-                    'location': {
-                        'uri': '',
-                        'range': {
-                            'start': {'line': 0, 'character': 0},
-                            'end': {'line': 0, 'character': 0},
-                        }
-                    }
-                })
-            if related:
-                diag['relatedInformation'] = related
         lsp_diags.append(diag)
 
     if not lsp_diags:
