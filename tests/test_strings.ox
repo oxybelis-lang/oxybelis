@@ -44,6 +44,42 @@ fn main() {
     print(str(true))
     print(str(false))
     
+    // ── str_split ──
+    print(str_split("a,b,c", ","))
+    
+    // ── str_trim ──
+    print("'" + str_trim("  hello  ") + "'")
+    print("'" + str_trim_start("  hello  ") + "'")
+    print("'" + str_trim_end("  hello  ") + "'")
+    
+    // ── str_replace / str_replace_all ──
+    print(str_replace("hello world", "world", "there"))
+    print(str_replace_all("a-b-c", "-", "/"))
+    
+    // ── str_join ──
+    print(str_join(["a", "b", "c"], ","))
+    print(str_join(["x"], "---"))
+    
+    // ── to_upper / to_lower ──
+    print(to_upper("Hello World"))
+    print(to_lower("Hello World"))
+    
+    // ── starts_with / ends_with ──
+    print(starts_with("hello", "he"))
+    print(starts_with("hello", "xyz"))
+    print(ends_with("hello", "lo"))
+    print(ends_with("hello", "la"))
+    
+    // ── str_repeat ──
+    print(str_repeat("ha", 3))
+    
+    // ── str_reverse ──
+    print(str_reverse("hello"))
+    
+    // ── str_find ──
+    print(str_find("hello world", "world"))
+    print(str_find("hello world", "xyz"))
+    
     // ── str puts (for output matching) ──
     print("end")
 }

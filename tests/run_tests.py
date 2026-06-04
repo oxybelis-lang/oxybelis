@@ -138,6 +138,24 @@ TESTS = [
         '3.140000',     # str(3.14) (std::to_string precision)
         'true',         # str(true)
         'false',        # str(false)
+        '[a, b, c]',    # str_split
+        "'hello'",      # str_trim
+        "'hello  '",    # str_trim_start
+        "'  hello'",    # str_trim_end
+        'hello there',  # str_replace
+        'a/b/c',        # str_replace_all
+        'a,b,c',        # str_join
+        'x',            # str_join single
+        'HELLO WORLD',  # to_upper
+        'hello world',  # to_lower
+        'true',         # starts_with true
+        'false',        # starts_with false
+        'true',         # ends_with true
+        'false',        # ends_with false
+        'hahaha',       # str_repeat
+        'olleh',        # str_reverse
+        'Some(6)',      # str_find found
+        'None',         # str_find not found
         'end',
     ]),
     ('test_modules.ox', [

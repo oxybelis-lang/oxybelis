@@ -1,5 +1,6 @@
 {
     "oxybelis.compiler.oxybelisPath": "C:\\Users\\Vince\\AppData\\Local\\oxybelis\\bin\\oxybelis.exe",
-    "oxybelis.lsp.serverPath": "C:\\Users\\Vince\\AppData\\Local\\oxybelis\\bin\\ox-lsp.exe",
+    "oxybelis.lsp.pythonPath": "C:\\Users\\Vince\\.pyenv\\pyenv-win\\versions\\3.13.3\\python.exe",
+    "oxybelis.lsp.serverPath": "D:\\Projects\\oxybelis\\ox_lsp.py",
     "oxybelis.formatter.serverPath": "C:\\Users\\Vince\\AppData\\Local\\oxybelis\\bin\\ox-fmt.exe"
 }

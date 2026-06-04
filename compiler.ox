@@ -2128,6 +2128,29 @@ class CodeGen {
             self.w("#include <cstdlib>")
             self.w("#include <cctype>")
             self.w("#include <filesystem>")
+            self.w("#include <NumCpp/Core.hpp>")
+            self.w("#include <NumCpp/NdArray.hpp>")
+            self.w("#include <NumCpp/Functions/sin.hpp>")
+            self.w("#include <NumCpp/Functions/cos.hpp>")
+            self.w("#include <NumCpp/Functions/tan.hpp>")
+            self.w("#include <NumCpp/Functions/sqrt.hpp>")
+            self.w("#include <NumCpp/Functions/abs.hpp>")
+            self.w("#include <NumCpp/Functions/exp.hpp>")
+            self.w("#include <NumCpp/Functions/log.hpp>")
+            self.w("#include <NumCpp/Functions/floor.hpp>")
+            self.w("#include <NumCpp/Functions/ceil.hpp>")
+            self.w("#include <NumCpp/Functions/zeros.hpp>")
+            self.w("#include <NumCpp/Functions/ones.hpp>")
+            self.w("#include <NumCpp/Functions/linspace.hpp>")
+            self.w("#include <NumCpp/Functions/arange.hpp>")
+            self.w("#include <NumCpp/Functions/dot.hpp>")
+            self.w("#include <NumCpp/Functions/matmul.hpp>")
+            self.w("#include <NumCpp/Functions/norm.hpp>")
+            self.w("#include <NumCpp/Functions/sum.hpp>")
+            self.w("#include <NumCpp/Functions/mean.hpp>")
+            self.w("#include <NumCpp/Functions/min.hpp>")
+            self.w("#include <NumCpp/Functions/max.hpp>")
+            self.w("#include <NumCpp/Linalg.hpp>")
             self.w("#ifdef _WIN32")
             self.w("#include <windows.h>")
             self.w("#endif")
@@ -2202,7 +2225,30 @@ class CodeGen {
             self.w("template<typename T>")
             self.w("auto& _ox_value(T& o) { return o.value; }")
             self.w("")
-
+            self.w("// ── conversions ───")
+            self.w("inline std::string str(const std::string& v){ return v; }")
+            self.w("inline std::string str(const char* v){ return std::string(v); }")
+            self.w("inline std::string str(int v) { return std::to_string(v); }")
+            self.w("inline std::string str(double v) { return std::to_string(v); }")
+            self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
+            self.w("template<typename T> std::string str(const std::optional<T>& v){")
+            self.depth = self.depth + 1
+            self.w("if(v) return \"Some(\"+str(*v)+\")\"; else return \"None\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T, typename E> std::string str(const Result<T,E>& r){")
+            self.depth = self.depth + 1
+            self.w("if(r.is_ok) return \"Ok(\"+str(r.value)+\")\"; else return \"Err(\"+str(r.error)+\")\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::string str(const std::vector<T>& v){")
+            self.depth = self.depth + 1
+            self.w("std::string r=\"[\";")
+            self.w("for(size_t i=0;i<v.size();i++){if(i)r+=\", \";r+=str(v[i]);}")
+            self.w("return r+\"]\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
             self.w("// ── print ───")
             self.w("template<typename T> void print(const T& v) { std::cout << v << \"\\n\"; }")
             self.w("inline void print(bool v) { std::cout << (v ? \"true\" : \"false\") << \"\\n\"; }")
@@ -2396,35 +2442,12 @@ class CodeGen {
             self.w("Option<T> _current;")
             self.depth = self.depth - 1
             self.w("};")
-            self.w("")
-            self.w("// ── conversions ───")
-            self.w("inline std::string str(const std::string& v){ return v; }")
-            self.w("inline std::string str(const char* v){ return std::string(v); }")
-            self.w("inline std::string str(int v) { return std::to_string(v); }")
-            self.w("inline std::string str(double v) { return std::to_string(v); }")
-            self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
-            self.w("template<typename T> std::string str(const std::optional<T>& v){")
-            self.depth = self.depth + 1
-            self.w("if(v) return \"Some(\"+str(*v)+\")\"; else return \"None\";")
-            self.depth = self.depth - 1
-            self.w("}")
-            self.w("template<typename T, typename E> std::string str(const Result<T,E>& r){")
-            self.depth = self.depth + 1
-            self.w("if(r.is_ok) return \"Ok(\"+str(r.value)+\")\"; else return \"Err(\"+str(r.error)+\")\";")
-            self.depth = self.depth - 1
-            self.w("}")
-            self.w("template<typename T> std::string str(const std::vector<T>& v){")
-            self.depth = self.depth + 1
-            self.w("std::string r=\"[\";")
-            self.w("for(size_t i=0;i<v.size();i++){if(i)r+=\", \";r+=str(v[i]);}")
-            self.w("return r+\"]\";")
-            self.depth = self.depth - 1
-            self.w("}")
             self.w("template<typename T> std::string str(const Generator<T>& g){")
             self.depth = self.depth + 1
             self.w("(void)g; return \"<generator>\";")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("")
             self.w("inline int to_int(const std::string& s) { return std::stoi(s); }")
             self.w("inline double to_float(const std::string& s) { return std::stod(s); }")
             self.w("")
@@ -2465,6 +2488,119 @@ class CodeGen {
             self.w("if (end > (int)s.size()) end = (int)s.size();")
             self.w("if (start >= end) return \"\";")
             self.w("return s.substr(start, end - start);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::string> str_split(const std::string& s, const std::string& delim) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> parts;")
+            self.w("size_t start = 0, end;")
+            self.w("while ((end = s.find(delim, start)) != std::string::npos) {")
+            self.depth = self.depth + 1
+            self.w("parts.push_back(s.substr(start, end - start));")
+            self.w("start = end + delim.length();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("parts.push_back(s.substr(start));")
+            self.w("return parts;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_trim(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("size_t start = s.find_first_not_of(\" \\t\\n\\r\\f\\v\");")
+            self.w("if (start == std::string::npos) return \"\";")
+            self.w("size_t end = s.find_last_not_of(\" \\t\\n\\r\\f\\v\");")
+            self.w("return s.substr(start, end - start + 1);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_trim_start(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("size_t start = s.find_first_not_of(\" \\t\\n\\r\\f\\v\");")
+            self.w("if (start == std::string::npos) return \"\";")
+            self.w("return s.substr(start);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_trim_end(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("size_t end = s.find_last_not_of(\" \\t\\n\\r\\f\\v\");")
+            self.w("if (end == std::string::npos) return \"\";")
+            self.w("return s.substr(0, end + 1);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_replace(const std::string& s, const std::string& old_str, const std::string& new_str) {")
+            self.depth = self.depth + 1
+            self.w("size_t pos = s.find(old_str);")
+            self.w("if (pos == std::string::npos) return s;")
+            self.w("std::string r = s;")
+            self.w("return r.replace(pos, old_str.length(), new_str);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_replace_all(const std::string& s, const std::string& old_str, const std::string& new_str) {")
+            self.depth = self.depth + 1
+            self.w("std::string r = s;")
+            self.w("size_t pos = 0;")
+            self.w("while ((pos = r.find(old_str, pos)) != std::string::npos) {")
+            self.depth = self.depth + 1
+            self.w("r.replace(pos, old_str.length(), new_str);")
+            self.w("pos += new_str.length();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_join(const std::vector<std::string>& v, const std::string& delim) {")
+            self.depth = self.depth + 1
+            self.w("std::string r;")
+            self.w("for (size_t i = 0; i < v.size(); i++) {")
+            self.depth = self.depth + 1
+            self.w("if (i) r += delim;")
+            self.w("r += v[i];")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string to_upper(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::string r = s;")
+            self.w("for (auto& c : r) c = std::toupper((unsigned char)c);")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string to_lower(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::string r = s;")
+            self.w("for (auto& c : r) c = std::tolower((unsigned char)c);")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool starts_with(const std::string& s, const std::string& prefix) {")
+            self.depth = self.depth + 1
+            self.w("return s.find(prefix) == 0;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool ends_with(const std::string& s, const std::string& suffix) {")
+            self.depth = self.depth + 1
+            self.w("if (suffix.size() > s.size()) return false;")
+            self.w("return s.rfind(suffix) == s.size() - suffix.size();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_repeat(const std::string& s, int n) {")
+            self.depth = self.depth + 1
+            self.w("std::string r;")
+            self.w("for (int i = 0; i < n; i++) r += s;")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string str_reverse(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("return std::string(s.rbegin(), s.rend());")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::optional<int> str_find(const std::string& s, const std::string& sub) {")
+            self.depth = self.depth + 1
+            self.w("size_t pos = s.find(sub);")
+            self.w("if (pos == std::string::npos) return std::nullopt;")
+            self.w("return static_cast<int>(pos);")
             self.depth = self.depth - 1
             self.w("}")
             self.w("")
@@ -2519,6 +2655,189 @@ class CodeGen {
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline std::string fs_cwd() { return std::filesystem::current_path().string(); }")
+            self.w("")
+            self.w("// ── math helpers ───")
+            self.w("template<typename T>")
+            self.w("nc::NdArray<T> _ox_math_to_ndarray(const std::vector<T>& v) {")
+            self.depth = self.depth + 1
+            self.w("return nc::NdArray<T>(v.begin(), v.end());")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("std::vector<T> _ox_math_from_ndarray(const nc::NdArray<T>& arr) {")
+            self.depth = self.depth + 1
+            self.w("return arr.toStlVector();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("nc::NdArray<T> _ox_math_to_ndarray_2d(const std::vector<std::vector<T>>& v) {")
+            self.depth = self.depth + 1
+            self.w("return nc::NdArray<T>(v);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("std::vector<std::vector<T>> _ox_math_from_ndarray_2d(const nc::NdArray<T>& arr) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> result(arr.numRows(), std::vector<T>(arr.numCols()));")
+            self.w("for (int32_t r = 0; r < arr.numRows(); ++r)")
+            self.w("    for (int32_t c = 0; c < arr.numCols(); ++c)")
+            self.w("        result[r][c] = arr(r, c);")
+            self.w("return result;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_zeros(int n) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::zeros<double>(1, static_cast<nc::uint32>(n)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_ones(int n) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::ones<double>(1, static_cast<nc::uint32>(n)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_linspace(double start, double end, int n) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::linspace(start, end, static_cast<nc::uint32>(n)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_arange(double start, double end, double step) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::arange(start, end, step));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_dot(const std::vector<double>& a, const std::vector<double>& b) {")
+            self.depth = self.depth + 1
+            self.w("return nc::dot(_ox_math_to_ndarray(a), _ox_math_to_ndarray(b)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::vector<double>> _ox_math_matmul(")
+            self.depth = self.depth + 1
+            self.w("const std::vector<std::vector<double>>& a, const std::vector<std::vector<double>>& b) {")
+            self.w("return _ox_math_from_ndarray_2d(")
+            self.w("    nc::matmul(_ox_math_to_ndarray_2d(a), _ox_math_to_ndarray_2d(b)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::vector<double>> _ox_math_transpose(")
+            self.depth = self.depth + 1
+            self.w("const std::vector<std::vector<double>>& a) {")
+            self.w("return _ox_math_from_ndarray_2d(_ox_math_to_ndarray_2d(a).transpose());")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_norm(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::norm(_ox_math_to_ndarray(a)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::vector<double>> _ox_math_inv(")
+            self.depth = self.depth + 1
+            self.w("const std::vector<std::vector<double>>& a) {")
+            self.w("return _ox_math_from_ndarray_2d(nc::linalg::inv(_ox_math_to_ndarray_2d(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_det(const std::vector<std::vector<double>>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::linalg::det(_ox_math_to_ndarray_2d(a));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_solve(")
+            self.depth = self.depth + 1
+            self.w("const std::vector<std::vector<double>>& A, const std::vector<double>& b) {")
+            self.w("return _ox_math_from_ndarray(")
+            self.w("    nc::linalg::solve(_ox_math_to_ndarray_2d(A), _ox_math_to_ndarray(b)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_sin(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::sin(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_cos(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::cos(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_tan(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::tan(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_sqrt(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::sqrt(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_abs(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::abs(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_exp(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::exp(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_log(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::log(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_floor(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::floor(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_ceil(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(nc::ceil(_ox_math_to_ndarray(a)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_add(const std::vector<double>& a, const std::vector<double>& b) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(_ox_math_to_ndarray(a) + _ox_math_to_ndarray(b));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_sub(const std::vector<double>& a, const std::vector<double>& b) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(_ox_math_to_ndarray(a) - _ox_math_to_ndarray(b));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_mul(const std::vector<double>& a, const std::vector<double>& b) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(_ox_math_to_ndarray(a) * _ox_math_to_ndarray(b));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_div(const std::vector<double>& a, const std::vector<double>& b) {")
+            self.depth = self.depth + 1
+            self.w("return _ox_math_from_ndarray(_ox_math_to_ndarray(a) / _ox_math_to_ndarray(b));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_sum(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::sum(_ox_math_to_ndarray(a)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_mean(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::mean(_ox_math_to_ndarray(a)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_min(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::min(_ox_math_to_ndarray(a)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_math_max(const std::vector<double>& a) {")
+            self.depth = self.depth + 1
+            self.w("return nc::max(_ox_math_to_ndarray(a)).item();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<double> _ox_math_reshape(const std::vector<double>& a, int rows, int cols) {")
+            self.depth = self.depth + 1
+            self.w("auto arr = _ox_math_to_ndarray(a);")
+            self.w("arr.reshape(rows, cols);")
+            self.w("return _ox_math_from_ndarray(arr);")
+            self.depth = self.depth - 1
+            self.w("}")
             self.w("")
         }
         if ns != "" {
@@ -2773,7 +3092,11 @@ fn main() -> void {
         var mconsole: str = ""
         var j = 0
         while j < len(cpp_file) { if str_get(cpp_file, j) == "\\" { mconsole = " -mconsole"; break }; j = j + 1 }
-        let status = exec(cc + " " + cflags + mconsole + " " + cpp_file + " -o " + exe_file)
+        // Auto-detect NumCpp include path
+        var numcpp_inc: str = ""
+        if fs_exists("NumCpp/include") { numcpp_inc = " -INumCpp/include" }
+        if fs_exists("../NumCpp/include") { numcpp_inc = " -I../NumCpp/include" }
+        let status = exec(cc + " " + cflags + numcpp_inc + mconsole + " " + cpp_file + " -o " + exe_file)
         if status == 0 {
             print("✓ " + source_path + " → " + exe_file)
             exec(exe_file)
