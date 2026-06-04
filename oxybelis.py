@@ -31,7 +31,7 @@ class TT(Enum):
     PUB=auto(); TRUE=auto(); FALSE=auto()
     KL_NONE=auto(); SOME=auto(); IMPORT=auto()
     AND=auto(); OR=auto(); NOT=auto()
-    BREAK=auto(); CONTINUE=auto()
+    BREAK=auto(); CONTINUE=auto(); YIELD=auto()
     # Built-in types
     T_INT=auto(); T_FLOAT=auto(); T_BOOL=auto()
     T_STR=auto(); T_VOID=auto()
@@ -56,7 +56,7 @@ KEYWORDS = {
     'pub': TT.PUB, 'true': TT.TRUE, 'false': TT.FALSE,
     'None': TT.KL_NONE, 'Some': TT.SOME, 'import': TT.IMPORT,
     'and': TT.AND, 'or': TT.OR, 'not': TT.NOT,
-    'break': TT.BREAK, 'continue': TT.CONTINUE,
+    'break': TT.BREAK, 'continue': TT.CONTINUE, 'yield': TT.YIELD,
     '_': TT.UNDERSCORE,
     'int': TT.T_INT, 'float': TT.T_FLOAT, 'bool': TT.T_BOOL,
     'str': TT.T_STR, 'void': TT.T_VOID,
@@ -251,6 +251,8 @@ class BreakStmt:    pass
 @dataclass
 class ContinueStmt: pass
 @dataclass
+class YieldStmt:    value: Any
+@dataclass
 class IfStmt:
     cond: Any; then_body: PyList[Any]
     elif_clauses: PyList[Tuple[Any,PyList[Any]]]; else_body: Optional[PyList[Any]]
@@ -318,7 +320,9 @@ class Parser:
 
     def _tok_span(self, t) -> Span:
         if isinstance(t, Token):
-            return Span(t.pos, t.pos + max(t.length, 1), t.line, t.col, t.line, t.col + max(t.length, 1))
+            start = t.pos - t.length if t.length > 0 else t.pos
+            end = t.pos
+            return Span(start, end, t.line, t.col, t.line, t.col + max(t.length, 1))
         return t  # already a Span
 
     def _set_span(self, node, t):
@@ -413,10 +417,13 @@ class Parser:
                 has_self = True; self.advance()
                 self.match_tok(TT.COMMA)
             while not self.check(TT.RPAREN, TT.EOF):
+                pname_tok = self.peek()
                 pname = self.expect(TT.IDENT).value
+                pname_node = Ident(pname)
+                self._set_span(pname_node, pname_tok)
                 self.expect(TT.COLON)
                 ptype = self.parse_type()
-                params.append((pname, ptype))
+                params.append((pname, ptype, pname_node))
                 if not self.match_tok(TT.COMMA): break
 
         self.expect(TT.RPAREN)
@@ -496,6 +503,12 @@ class Parser:
             t = self.peek(); self.advance(); n = BreakStmt(); self._set_span(n, t); return n
         if self.check(TT.CONTINUE):
             t = self.peek(); self.advance(); n = ContinueStmt(); self._set_span(n, t); return n
+        if self.check(TT.YIELD):
+            t = self.peek(); self.advance()
+            value = self.parse_expr()
+            n = YieldStmt(value)
+            self._set_span_range(n, t, self.peek())
+            return n
         expr = self.parse_expr()
         if self.check(TT.ASSIGN, TT.PLUS_ASSIGN, TT.MINUS_ASSIGN,
                       TT.STAR_ASSIGN, TT.SLASH_ASSIGN):
@@ -514,12 +527,16 @@ class Parser:
         st = self.peek()
         mutable = self.advance().type == TT.VAR
         nt = self.peek()
+        name_tok = self.peek()
         name = self.expect(TT.IDENT).value
+        name_node = Ident(name)
+        self._set_span(name_node, name_tok)
         type_ann = None
         if self.match_tok(TT.COLON): type_ann = self.parse_type()
         self.expect(TT.ASSIGN)
         value = self.parse_expr()
         n = VarDecl(name, type_ann, value, mutable)
+        n.name_node = name_node
         self._set_span_range(n, st, self.peek())
         return n
 
@@ -876,6 +893,37 @@ template<typename T>
     template<typename T>
     auto& _ox_value(T& o) { return o.value; }
 
+// ── Generator<T> ────────────────────────────────────────────────────────────
+template<typename T>
+class Generator {
+public:
+    std::function<Option<T>()> _next_fn;
+
+    Generator() = default;
+    template<typename F> Generator(F fn) : _next_fn(std::move(fn)) {}
+
+    bool next() { auto r = _next_fn(); if (r) { _current = r; return true; } return false; }
+    T value() { return *_current; }
+
+    class Iterator {
+    public:
+        Generator* _gen;
+        bool _done;
+        Iterator(Generator* gen, bool done) : _gen(gen), _done(done) {
+            if (!_done && _gen->_next_fn) { _done = !_gen->next(); }
+        }
+        T operator*() { return _gen->value(); }
+        bool operator!=(const Iterator& o) { return _done != o._done; }
+        Iterator& operator++() { _done = !_gen->next(); return *this; }
+    };
+
+    Iterator begin() { return Iterator(this, false); }
+    Iterator end() { return Iterator(this, true); }
+
+private:
+    Option<T> _current;
+};
+
     // ── str (declared before print) ─────────────────────────────────────────────
 inline std::string str(const std::string& v){ return v; }
 inline std::string str(const char* v)     { return std::string(v); }
@@ -890,6 +938,16 @@ template<typename T, typename E>
 std::string str(const Result<T,E>& r) {
     if(r.is_ok) return "Ok("+str(r.value)+")"; else return "Err("+str(r.error)+")";
 }
+template<typename T>
+std::string str(const std::vector<T>& v) {
+    std::string r = "[";
+    for (size_t i=0;i<v.size();i++){if(i)r+=", ";r+=str(v[i]);}
+    return r+"]";
+}
+template<typename T>
+std::string str(const Generator<T>& g) {
+    (void)g; return "<generator>";
+}
 
 // ── print ──────────────────────────────────────────────────────────────────
 template<typename T>
@@ -898,9 +956,7 @@ inline void print(bool v) { std::cout << (v ? "true" : "false") << "\n"; }
 inline void print(const std::string& v) { std::cout << v << "\n"; }
 template<typename T>
 void print(const std::vector<T>& v) {
-    std::cout << "[";
-    for (size_t i=0;i<v.size();i++){if(i)std::cout<<", ";std::cout<<v[i];}
-    std::cout << "]\n";
+    std::cout << str(v) << "\n";
 }
 template<typename T>
 void print(const std::optional<T>& o){
@@ -1029,6 +1085,125 @@ T _ox_min(const std::vector<T>& v) {
 template<typename T>
 T _ox_max(const std::vector<T>& v) {
     T m = v[0]; for (const auto& x : v) if (m < x) m = x; return m;
+}
+
+// ── itertools (List<T>) ────────────────────────────────────────────────────
+template<typename T>
+std::vector<std::vector<T>> _ox_combinations(const std::vector<T>& v, int k) {
+    std::vector<std::vector<T>> r;
+    int n = (int)v.size();
+    if (k > n || k <= 0) return r;
+    if (k == 0) { r.push_back({}); return r; }
+    std::vector<int> idx(k);
+    for (int i = 0; i < k; i++) idx[i] = i;
+    while (true) {
+        std::vector<T> c(k);
+        for (int i = 0; i < k; i++) c[i] = v[idx[i]];
+        r.push_back(c);
+        int i = k - 1;
+        while (i >= 0 && idx[i] == n - k + i) i--;
+        if (i < 0) break;
+        idx[i]++;
+        for (int j = i + 1; j < k; j++) idx[j] = idx[j-1] + 1;
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<std::vector<T>> _ox_permutations(const std::vector<T>& v, int k) {
+    std::vector<std::vector<T>> r;
+    int n = (int)v.size();
+    if (k > n || k <= 0) return r;
+    std::vector<int> idx(k);
+    std::vector<bool> used(n, false);
+    std::function<void(int)> perm = [&](int pos) {
+        if (pos == k) {
+            std::vector<T> p(k);
+            for (int i = 0; i < k; i++) p[i] = v[idx[i]];
+            r.push_back(p);
+            return;
+        }
+        for (int i = 0; i < n; i++) {
+            if (!used[i]) {
+                used[i] = true;
+                idx[pos] = i;
+                perm(pos + 1);
+                used[i] = false;
+            }
+        }
+    };
+    perm(0);
+    return r;
+}
+
+template<typename T>
+std::vector<std::vector<T>> _ox_chunked(const std::vector<T>& v, int n) {
+    std::vector<std::vector<T>> r;
+    int sz = (int)v.size();
+    if (n <= 0) return r;
+    for (int i = 0; i < sz; i += n) {
+        std::vector<T> chunk;
+        int end = (i + n > sz) ? sz : (i + n);
+        for (int j = i; j < end; j++) chunk.push_back(v[j]);
+        r.push_back(chunk);
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<std::vector<T>> _ox_windowed(const std::vector<T>& v, int n) {
+    std::vector<std::vector<T>> r;
+    int sz = (int)v.size();
+    if (n <= 0 || n > sz) return r;
+    for (int i = 0; i <= sz - n; i++) {
+        std::vector<T> win;
+        for (int j = i; j < i + n; j++) win.push_back(v[j]);
+        r.push_back(win);
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<std::vector<T>> _ox_pairwise(const std::vector<T>& v) {
+    return _ox_windowed(v, 2);
+}
+
+template<typename T>
+std::vector<T> _ox_reversed(const std::vector<T>& v) {
+    std::vector<T> r(v.rbegin(), v.rend());
+    return r;
+}
+
+template<typename T>
+std::vector<T> _ox_cycle(const std::vector<T>& v, int n) {
+    std::vector<T> r;
+    r.reserve(v.size() * n);
+    for (int i = 0; i < n; i++) {
+        for (const auto& x : v) r.push_back(x);
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<T> _ox_take_while(const std::vector<T>& v, bool (*fn)(T)) {
+    std::vector<T> r;
+    for (const auto& x : v) {
+        if (!fn(x)) break;
+        r.push_back(x);
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<T> _ox_drop_while(const std::vector<T>& v, bool (*fn)(T)) {
+    std::vector<T> r;
+    bool dropping = true;
+    for (const auto& x : v) {
+        if (dropping && fn(x)) continue;
+        dropping = false;
+        r.push_back(x);
+    }
+    return r;
 }
 
 // ── map / list helpers ──────────────────────────────────────────────────────
@@ -1212,6 +1387,273 @@ class ModuleResolver:
 #  CODE GENERATOR
 # ═══════════════════════════════════════════════════════════════
 
+class GenTranspiler:
+    """Transforms a generator function into a state-machine struct + wrapper.
+
+    Each yield creates a state boundary. While-loops with yields use state
+    transitions for the loop check/body/exit. If/elif/else branches with
+    yields use the same approach.
+    """
+
+    def __init__(self, cg, fn: FnDef):
+        self.cg = cg
+        self.fn = fn
+        self.state_counter = 1  # state 0 is function entry
+        self.DONE = 9999
+        self.lines: PyList[str] = []
+        self._member_names: set = set()
+        self._member_types: dict = {}
+
+    def _state(self) -> int:
+        s = self.state_counter
+        self.state_counter += 1
+        return s
+
+    def _emit(self, *args):
+        self.lines.extend(args)
+
+    def _case(self, s: int):
+        self._emit(f"case {s}:")
+
+    def _any_yield(self, stmts) -> bool:
+        for s in stmts:
+            if isinstance(s, YieldStmt):
+                return True
+            if isinstance(s, (IfStmt, WhileStmt, ForStmt)):
+                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                if self._any_yield(body if isinstance(body, list) else [body]):
+                    return True
+                if hasattr(s, 'elif_clauses'):
+                    for _, eb in s.elif_clauses:
+                        if self._any_yield(eb):
+                            return True
+                if hasattr(s, 'else_body') and s.else_body:
+                    if self._any_yield(s.else_body):
+                        return True
+        return False
+
+    def transpile(self):
+        """Returns (struct_cpp, wrapper_cpp)"""
+        self._find_members(self.fn.body)
+        # Generate state-machine body
+        self._case(0)  # function entry
+        self._gen_body(self.fn.body)
+        self._emit(f"_state = {self.DONE}; return None;")
+        self._case(self.DONE)
+        self._emit("return None;")
+        return self._emit_struct(), self._emit_wrapper()
+
+    @staticmethod
+    def _infer_type_from(expr) -> str:
+        if isinstance(expr, IntLit): return 'int'
+        if isinstance(expr, FloatLit): return 'double'
+        if isinstance(expr, BoolLit): return 'bool'
+        if isinstance(expr, StrLit): return 'std::string'
+        if isinstance(expr, UnaryOp): return GenTranspiler._infer_type_from(expr.operand)
+        if isinstance(expr, BinOp):
+            lt = GenTranspiler._infer_type_from(expr.left)
+            rt = GenTranspiler._infer_type_from(expr.right)
+            if lt == 'double' or rt == 'double': return 'double'
+            if lt == 'int' or rt == 'int': return 'int'
+            return lt or rt
+        return 'int'
+
+    def _find_members(self, stmts):
+        for s in stmts:
+            if isinstance(s, VarDecl):
+                self._member_names.add(s.name)
+                if s.type_ann:
+                    self._member_types[s.name] = map_type(s.type_ann)
+                else:
+                    self._member_types[s.name] = self._infer_type_from(s.value)
+            elif isinstance(s, (IfStmt, WhileStmt, ForStmt)):
+                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                if body:
+                    self._find_members(body if isinstance(body, list) else [body])
+                if hasattr(s, 'elif_clauses'):
+                    for _, eb in s.elif_clauses:
+                        self._find_members(eb)
+                if hasattr(s, 'else_body') and s.else_body:
+                    self._find_members(s.else_body)
+
+    def _get_inner_type(self) -> str:
+        rt = self.fn.return_type
+        if rt.startswith('Generator<'):
+            return rt[len('Generator<'):-1]
+        return 'void'
+
+    def _emit_struct(self) -> str:
+        sn = f"_gen_{self.fn.name}"
+        inner = self._get_inner_type()
+        lines: PyList[str] = [f"struct {sn} {{"]
+        lines.append(f"    int _state = 0;")
+        # Parameters as members
+        for pname, ptype, *_ in self.fn.params:
+            lines.append(f"    {map_type(ptype)} {pname};")
+        # Local vars as members
+        for vname in sorted(self._member_names):
+            if not any(p[0] == vname for p in self.fn.params):
+                lines.append(f"    {self._member_types[vname]} {vname};")
+        # Constructor
+        cons = ', '.join(f"{map_type(pt)} {pn}" for pn, pt, *_ in self.fn.params)
+        init = ', '.join(f"{pn}({pn})" for pn, _, *_ in self.fn.params)
+        lines.append(f"    {sn}({cons}) : {init} {{}}")
+        # _next method
+        lines.append(f"    Option<{map_type(inner)}> _next() {{")
+        lines.append(f"        while (true) {{")
+        lines.append(f"            switch (_state) {{")
+        for ln in self.lines:
+            lines.append(f"                {ln}")
+        lines.append(f"            }}")
+        lines.append(f"        }}")
+        lines.append(f"    }}")
+        lines.append(f"}};")
+        return '\n'.join(lines)
+
+    def _emit_wrapper(self) -> str:
+        sn = f"_gen_{self.fn.name}"
+        inner = self._get_inner_type()
+        ret = f"Generator<{map_type(inner)}>"
+        params = ', '.join(f"{map_type(pt)} {pn}" for pn, pt, *_ in self.fn.params)
+        args = ', '.join(pn for pn, _, *_ in self.fn.params)
+        return f"{ret} {self.fn.name}({params}) {{\n    auto gen = {sn}({args});\n    return {ret}([gen]() mutable -> Option<{map_type(inner)}> {{ return gen._next(); }});\n}}"
+
+    def _gen_body(self, stmts):
+        for stmt in stmts:
+            if isinstance(stmt, YieldStmt):
+                cont = self._state()
+                val = self.cg.expr(stmt.value)
+                self._emit(f"{{ _state = {cont}; return Some({val}); }}")
+                self._case(cont)
+            elif isinstance(stmt, WhileStmt):
+                self._gen_while(stmt)
+            elif isinstance(stmt, IfStmt):
+                self._gen_if(stmt)
+            elif isinstance(stmt, ForStmt):
+                self._gen_for(stmt)
+            elif isinstance(stmt, VarDecl):
+                val = self.cg.expr(stmt.value)
+                # Variable is already a struct member, just assign
+                self._emit(f"{stmt.name} = {val};")
+            elif isinstance(stmt, Assignment):
+                self._emit(f"{self.cg.expr(stmt.target)} {stmt.op} {self.cg.expr(stmt.value)};")
+            elif isinstance(stmt, ExprStmt):
+                self._emit(f"{self.cg.expr(stmt.expr)};")
+            elif isinstance(stmt, ReturnStmt):
+                self._emit(f"_state = {self.DONE}; return None;")
+            elif isinstance(stmt, BreakStmt):
+                self._emit("break;")
+            elif isinstance(stmt, ContinueStmt):
+                self._emit("continue;")
+
+    def _gen_while(self, s: WhileStmt):
+        cond = self.cg.expr(s.cond)
+        check = self._state()
+        exit_s = self._state()
+        # End prior state, transition to loop check
+        self._emit(f"_state = {check}; break;")
+        self._case(check)
+        self._emit(f"if (!({cond})) {{ _state = {exit_s}; break; }}")
+        self._gen_body(s.body)
+        self._emit(f"_state = {check}; break;")
+        self._case(exit_s)
+
+    def _gen_if(self, s: IfStmt):
+        has_yield = self._any_yield(s.then_body)
+        if s.else_body:
+            has_yield = has_yield or self._any_yield(s.else_body)
+        for _, eb in s.elif_clauses:
+            has_yield = has_yield or self._any_yield(eb)
+
+        if has_yield:
+            self._gen_if_stateful(s)
+        else:
+            cond = self.cg.expr(s.cond)
+            self._emit(f"if ({cond}) {{")
+            self._gen_body(s.then_body)
+            self._emit(f"}} else {{")
+            if s.else_body:
+                self._gen_body(s.else_body)
+            for ec, eb in s.elif_clauses:
+                self._emit(f"}} else if ({self.cg.expr(ec)}) {{")
+                self._gen_body(eb)
+            self._emit(f"}}")
+
+    def _gen_if_stateful(self, s: IfStmt):
+        """Generate if/elif/else using state transitions."""
+        if_check = self._state()
+        after_s = self._state()
+        self._emit(f"_state = {if_check}; break;")
+        self._case(if_check)
+        cond = self.cg.expr(s.cond)
+        # Flatten elif into recursive else-if
+        all_branches: PyList[tuple] = [(s.cond, s.then_body)]
+        for ec, eb in s.elif_clauses:
+            all_branches.append((ec, eb))
+        if s.else_body is not None:
+            all_branches.append((None, s.else_body))
+
+        # For each branch except the last, check its condition
+        for i, (br_cond, br_body) in enumerate(all_branches):
+            branch_state = self._state()
+            if i < len(all_branches) - 1:
+                next_cond = all_branches[i+1][0]
+                if br_cond is not None:
+                    cond_str = self.cg.expr(br_cond)
+                    self._emit(f"if ({cond_str}) {{ _state = {branch_state}; break; }}")
+                else:
+                    self._emit(f"_state = {branch_state}; break;")
+                self._case(branch_state)
+                self._gen_body(br_body)
+                self._emit(f"_state = {after_s}; break;")
+            else:
+                # Last branch (may be else)
+                if br_cond is not None:
+                    cond_str = self.cg.expr(br_cond)
+                    self._emit(f"if ({cond_str}) {{ _state = {branch_state}; break; }} else {{ _state = {after_s}; break; }}")
+                    self._case(branch_state)
+                self._gen_body(br_body)
+                self._emit(f"_state = {after_s}; break;")
+        self._case(after_s)
+
+    def _gen_for(self, s: ForStmt):
+        it = s.iterable
+        if isinstance(it, RangeLit):
+            start = self.cg.expr(it.start)
+            end = self.cg.expr(it.end)
+            # Check if body has yields
+            if self._any_yield(s.body):
+                # State-machine for-loop
+                check = self._state()
+                exit_s = self._state()
+                self._emit(f"_state = {check}; break;")
+                self._case(check)
+                self._emit(f"if ({s.var} >= {end}) {{ _state = {exit_s}; break; }}")
+                self._gen_body(s.body)
+                self._emit(f"{s.var}++; _state = {check}; break;")
+                self._case(exit_s)
+            else:
+                self._emit(f"for (int {s.var} = {start}; {s.var} < {end}; ++{s.var}) {{")
+                self._gen_body(s.body)
+                self._emit(f"}}")
+        else:
+            it_expr = self.cg.expr(it)
+            if self._any_yield(s.body):
+                check = self._state()
+                exit_s = self._state()
+                self._emit(f"auto&& _it = {it_expr}; auto _ip = _it.begin();")
+                self._emit(f"_state = {check}; break;")
+                self._case(check)
+                self._emit(f"if (_ip == _it.end()) {{ _state = {exit_s}; break; }}")
+                self._emit(f"auto& {s.var} = *_ip;")
+                self._gen_body(s.body)
+                self._emit(f"++_ip; _state = {check}; break;")
+                self._case(exit_s)
+            else:
+                self._emit(f"for (auto& {s.var} : {it_expr}) {{")
+                self._gen_body(s.body)
+                self._emit(f"}}")
+
 class CodeGen:
     def __init__(self, module_namespace: str = '', modules: set = None):
         self.out: PyList[str] = []
@@ -1279,17 +1721,36 @@ class CodeGen:
         self.w('};'); self.w('')
 
     def gen_method(self, fn: FnDef):
-        params = ', '.join(f"{map_type(t)} {n}" for n,t in fn.params)
+        params = ', '.join(f"{map_type(t)} {n}" for n,t,_ in fn.params)
         self.w(f"{map_type(fn.return_type)} {fn.name}({params}) {{")
         self.depth += 1
         for s in fn.body: self.gen_stmt(s)
         self.depth -= 1
         self.w('}'); self.w('')
 
+    def _has_yield(self, stmts) -> bool:
+        for s in stmts:
+            if isinstance(s, YieldStmt):
+                return True
+            if isinstance(s, (IfStmt, WhileStmt, ForStmt)):
+                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                if self._has_yield(body if isinstance(body, list) else [body]):
+                    return True
+                if hasattr(s, 'elif_clauses'):
+                    for _, eb in s.elif_clauses:
+                        if self._has_yield(eb):
+                            return True
+                if hasattr(s, 'else_body') and s.else_body:
+                    if self._has_yield(s.else_body):
+                        return True
+        return False
+
     def gen_fn(self, fn: FnDef):
+        if self._has_yield(fn.body):
+            return self.gen_generator_fn(fn)
         if fn.generics:
             # Add defaults for params not appearing in function parameters (e.g. deque_new<T>())
-            param_types = {t for _, t in fn.params}
+            param_types = {t for _, t, _ in fn.params}
             used_in_params = set()
             for pt in param_types:
                 for g in fn.generics:
@@ -1306,7 +1767,7 @@ class CodeGen:
         primitives = {'int', 'float', 'bool', 'str', 'void'}
         generic_set = set(fn.generics)
         parts = []
-        for n, t in params_list:
+        for n, t, *_ in params_list:
             base = _base_type(t)
             if base not in primitives and base not in ('List', 'Map', 'Option') and base not in generic_set:
                 parts.append(f"{map_type(t)}& {n}")
@@ -1380,7 +1841,7 @@ class CodeGen:
             s = self.expr(it.start); e = self.expr(it.end)
             self.w(f"for (int {node.var} = {s}; {node.var} < {e}; ++{node.var}) {{")
         else:
-            self.w(f"for (auto& {node.var} : {self.expr(it)}) {{")
+            self.w(f"for (auto {node.var} : {self.expr(it)}) {{")
         self.depth += 1
         for s in node.body: self.gen_stmt(s)
         self.depth -= 1; self.w('}')
@@ -1390,6 +1851,16 @@ class CodeGen:
         self.depth += 1
         for s in node.body: self.gen_stmt(s)
         self.depth -= 1; self.w('}')
+
+    def gen_generator_fn(self, fn: FnDef):
+        """Generate state-machine C++ for a generator function."""
+        t = GenTranspiler(self, fn)
+        struct_code, wrapper_code = t.transpile()
+        for ln in struct_code.split('\n'):
+            self.w(ln)
+        self.w('')
+        for ln in wrapper_code.split('\n'):
+            self.w(ln)
 
     def gen_match(self, node: MatchStmt):
         sv = self.tmp()
@@ -1455,7 +1926,7 @@ class CodeGen:
             mname = map_type(node.name) if '<' in node.name else node.name
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
                 return f"_oxm_{node.obj.name}::{mname}({args})"
-            if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max'):
+            if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max','combinations','permutations','chunked','windowed','pairwise','reversed','cycle','take_while','drop_while'):
                 return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
             return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
@@ -1483,7 +1954,7 @@ class CodeGen:
 # ═══════════════════════════════════════════════════════════════
 
 _PRIMITIVE_TYPES = {'int', 'float', 'bool', 'str', 'void'}
-_CONTAINER_TYPES = {'List', 'Map', 'Option', 'Result'}
+_CONTAINER_TYPES = {'List', 'Map', 'Option', 'Result', 'Generator'}
 
 def _base_type(t: str) -> str:
     return t.split('<')[0] if '<' in t else t
@@ -1766,7 +2237,8 @@ class TypeChecker:
                     )
                     self.generic_params = old_generic
                     return ret
-                for i, (arg, (pname, ptype)) in enumerate(zip(node.args, params)):
+                for i, (arg, p) in enumerate(zip(node.args, params)):
+                    pname, ptype = p[0], p[1]
                     arg_t = self._infer_type(arg)
                     if ptype == 'void':
                         continue
@@ -1797,12 +2269,13 @@ class TypeChecker:
                         self._error(
                             f"function `{base_name}` in module `{mod_name}` takes {len(params)} argument{'s' if len(params) != 1 else ''} but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
                             node, 'E0060')
-                    for i, (arg, (pname, ptype)) in enumerate(zip(node.args, params)):
-                        arg_t = self._infer_type(arg)
-                        if ptype != 'void' and not self._is_compatible(arg_t, ptype):
-                            self._type_error(ptype, arg_t, arg, f"argument `{pname}` to `{mod_name}.{base_name}`")
-                    self.generic_params = old_generic
-                    return ret
+                for i, (arg, p) in enumerate(zip(node.args, params)):
+                    pname, ptype = p[0], p[1]
+                    arg_t = self._infer_type(arg)
+                    if ptype != 'void' and not self._is_compatible(arg_t, ptype):
+                        self._type_error(ptype, arg_t, arg, f"argument `{pname}` to `{mod_name}.{base_name}`")
+                self.generic_params = old_generic
+                return ret
                 self._error(f"no function named `{base_name}` in module `{mod_name}`", node, 'E0599')
                 return 'void'
             obj_t = self._infer_type(node.obj)
@@ -1844,6 +2317,12 @@ class TypeChecker:
                     return f'Option<{elem_type}>'
                 if node.name in ('sum', 'min', 'max'):
                     return elem_type
+                if node.name in ('combinations', 'permutations', 'chunked', 'windowed', 'pairwise'):
+                    return f'List<List<{elem_type}>>'
+                if node.name in ('reversed', 'cycle'):
+                    return f'List<{elem_type}>'
+                if node.name in ('take_while', 'drop_while'):
+                    return f'List<{elem_type}>'
             return 'void'
         if isinstance(node, TryOp):
             inner = self._infer_type(node.value)
@@ -1919,17 +2398,23 @@ class TypeChecker:
                 sp, code='W0003'))
         if isinstance(node, VarDecl):
             val_t = self._infer_type(node.value)
+            resolved = node.type_ann or val_t
             if node.type_ann:
                 if not self._is_compatible(val_t, node.type_ann):
                     self._type_error(node.type_ann, val_t, node.value)
                 self._declare_var(node.name, node.type_ann, node)
             else:
                 self._declare_var(node.name, val_t, node)
+            if hasattr(node, 'name_node'):
+                node.name_node._type = resolved
         elif isinstance(node, Assignment):
             target_t = self._infer_type(node.target)
             val_t = self._infer_type(node.value)
             if not self._is_compatible(val_t, target_t):
                 self._type_error(target_t, val_t, node.value)
+        elif isinstance(node, YieldStmt):
+            if node.value is not None:
+                self._infer_type(node.value)
         elif isinstance(node, ReturnStmt):
             if node.value is not None:
                 val_t = self._infer_type(node.value)
@@ -1966,7 +2451,7 @@ class TypeChecker:
             self._push_scope()
             if isinstance(node.iterable, RangeLit):
                 var_type = 'int'
-            elif _base_type(iter_t) == 'List':
+            elif _base_type(iter_t) in _CONTAINER_TYPES:
                 params = _type_params(iter_t)
                 var_type = params[0] if params else 'void'
             else:
@@ -2003,10 +2488,13 @@ class TypeChecker:
             for g in node.generics:
                 self.generic_params.add(g)
             self._push_scope()
-            for pname, ptype in node.params:
+            for p in node.params:
+                pname, ptype = p[0], p[1]
                 self.vars[-1][pname] = ptype
+                if len(p) >= 3:
+                    p[2]._type = ptype
             old_cls = self.in_class
-            if any(pname == 'self' for pname, _ in node.params):
+            if any(p[0] == 'self' for p in node.params):
                 self.in_class = self.in_class or 'Self'
             for s in node.body:
                 self._check_stmt(s)

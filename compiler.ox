@@ -143,6 +143,13 @@ fn node_return(value: int) -> int {
     return id
 }
 
+fn node_yield_stmt(value: int) -> int {
+    let id = alloc_node()
+    node_pool[id].kind = "YieldStmt"
+    node_pool[id].inner = value
+    return id
+}
+
 fn node_break() -> int {
     let id = alloc_node()
     node_pool[id].kind = "BreakStmt"
@@ -464,6 +471,7 @@ let TT_COLON        = "COLON"
 let TT_COMMA        = "COMMA"
 let TT_SEMI         = "SEMI"
 let TT_UNDERSCORE   = "UNDERSCORE"
+let TT_YIELD        = "YIELD"
 let TT_EOF          = "EOF"
 
 fn keyword_type(word: str) -> str {
@@ -491,6 +499,7 @@ fn keyword_type(word: str) -> str {
     if word == "not"      { return TT_NOT }
     if word == "break"    { return TT_BREAK }
     if word == "continue" { return TT_CONTINUE }
+    if word == "yield"    { return TT_YIELD }
     if word == "int"      { return TT_T_INT }
     if word == "float"    { return TT_T_FLOAT }
     if word == "bool"     { return TT_T_BOOL }
@@ -897,6 +906,7 @@ class Parser {
     fn parse_stmt(self) -> int {
         if self.check([TT_LET, TT_VAR])   { return self.parse_var_decl() }
         if self.check([TT_RETURN])         { return self.parse_return() }
+        if self.check([TT_YIELD])          { return self.parse_yield() }
         if self.check([TT_IF])             { return self.parse_if() }
         if self.check([TT_FOR])            { return self.parse_for() }
         if self.check([TT_WHILE])          { return self.parse_while() }
@@ -928,6 +938,12 @@ class Parser {
         self.expect([TT_RETURN])
         if self.check([TT_RBRACE, TT_SEMI, TT_EOF]) { return node_return(-1) }
         return node_return(self.parse_expr())
+    }
+
+    fn parse_yield(self) -> int {
+        self.expect([TT_YIELD])
+        let value: int = self.parse_expr()
+        return node_yield_stmt(value)
     }
 
     fn parse_if(self) -> int {
@@ -1306,6 +1322,12 @@ class CodeGen {
     in_class: str
     tmp_counter: int
     modules: List<str>
+    // Generator state-machine temporaries
+    _gen_lines: List<str>
+    _gen_state: int
+    _gen_DONE: int
+    _gen_member_names: List<str>
+    _gen_member_types: List<str>
 
     fn w(self, line: str) -> void {
         var indent: str = ""
@@ -1415,7 +1437,7 @@ class CodeGen {
                 return "_oxm_" + obj_str + "::" + mname + "(" + as + ")"
             }
             // Built-in list chaining methods
-            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" {
+            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" or node.name == "combinations" or node.name == "permutations" or node.name == "chunked" or node.name == "windowed" or node.name == "pairwise" or node.name == "reversed" or node.name == "cycle" or node.name == "take_while" or node.name == "drop_while" {
                 if as != "" { return "_ox_" + node.name + "(" + obj_str + ", " + as + ")" }
                 return "_ox_" + node.name + "(" + obj_str + ")"
             }
@@ -1478,6 +1500,9 @@ class CodeGen {
         elif node.kind == "ForStmt"      { self.gen_for(node_id) }
         elif node.kind == "WhileStmt"    { self.gen_while(node_id) }
         elif node.kind == "MatchStmt"    { self.gen_match(node_id) }
+        elif node.kind == "YieldStmt" {
+            self.w("/* unexpected yield outside generator */")
+        }
         elif node.kind == "ExprStmt"     { self.w(self.expr(node.inner) + ";") }
         elif node.kind == "FnDef"        { self.gen_fn(node_id) }
         else { self.w("/* unhandled " + node.kind + " */") }
@@ -1536,7 +1561,7 @@ class CodeGen {
             self.w("for (int " + node.var_name + " = " + s + "; " +
                    node.var_name + " < " + e + "; ++" + node.var_name + ") {")
         } else {
-            self.w("for (auto& " + node.var_name + " : " + self.expr(node.iterable) + ") {")
+            self.w("for (auto " + node.var_name + " : " + self.expr(node.iterable) + ") {")
         }
         self.depth = self.depth + 1
         var i = 0
@@ -1588,8 +1613,385 @@ class CodeGen {
         }
     }
 
+    fn _has_yield(self, stmt_ids: List<int>) -> bool {
+        var i = 0
+        while i < len(stmt_ids) {
+            let s = node_pool[stmt_ids[i]]
+            if s.kind == "YieldStmt" { return true }
+            if s.kind == "IfStmt" {
+                if self._has_yield(s.then_body) { return true }
+                var j = 0
+                while j < len(s.elif_clauses) {
+                    let ec = node_pool[s.elif_clauses[j]]
+                    if self._has_yield(ec.body) { return true }
+                    j = j + 1
+                }
+                if self._has_yield(s.else_body) { return true }
+            }
+            if s.kind == "WhileStmt" {
+                if self._has_yield(s.body) { return true }
+            }
+            if s.kind == "ForStmt" {
+                if self._has_yield(s.body) { return true }
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    // ── Generator helpers ──────────────────────────────────────
+    fn _gen_next_state(self) -> int {
+        let s = self._gen_state
+        self._gen_state = self._gen_state + 1
+        return s
+    }
+
+    fn _gen_emit(self, line: str) -> void {
+        push(self._gen_lines, line)
+    }
+
+    fn _gen_case(self, s: int) -> void {
+        self._gen_emit("case " + str(s) + ":")
+    }
+
+    fn _gen_get_inner_type(self, fn_id: int) -> str {
+        let rt = node_pool[fn_id].return_type
+        var i = 0
+        while i < len(rt) {
+            if str_get(rt, i) == "<" {
+                return str_sub(rt, i + 1, len(rt) - 1)
+            }
+            i = i + 1
+        }
+        return "void"
+    }
+
+    fn _gen_infer_type(self, expr_id: int) -> str {
+        let node = node_pool[expr_id]
+        if node.kind == "IntLit" { return "int" }
+        if node.kind == "FloatLit" { return "double" }
+        if node.kind == "BoolLit" { return "bool" }
+        if node.kind == "StrLit" { return "std::string" }
+        if node.kind == "UnaryOp" { return self._gen_infer_type(node.operand) }
+        if node.kind == "BinOp" {
+            let lt = self._gen_infer_type(node.left)
+            let rt = self._gen_infer_type(node.right)
+            if lt == "double" or rt == "double" { return "double" }
+            if lt == "int" or rt == "int" { return "int" }
+            if lt != "" { return lt }
+            return rt
+        }
+        return "int"
+    }
+
+    fn _gen_find_members(self, stmt_ids: List<int>) -> void {
+        var i = 0
+        while i < len(stmt_ids) {
+            let s = node_pool[stmt_ids[i]]
+            if s.kind == "VarDecl" {
+                var found = false
+                var j = 0
+                while j < len(self._gen_member_names) {
+                    if self._gen_member_names[j] == s.name { found = true; break }
+                    j = j + 1
+                }
+                if not found {
+                    push(self._gen_member_names, s.name)
+                    if s.type_ann != "" {
+                        push(self._gen_member_types, map_type(s.type_ann))
+                    } else {
+                        push(self._gen_member_types, self._gen_infer_type(s.inner))
+                    }
+                }
+            }
+            if s.kind == "IfStmt" {
+                self._gen_find_members(s.then_body)
+                var j = 0
+                while j < len(s.elif_clauses) {
+                    let ec = node_pool[s.elif_clauses[j]]
+                    self._gen_find_members(ec.body)
+                    j = j + 1
+                }
+                self._gen_find_members(s.else_body)
+            }
+            if s.kind == "WhileStmt" { self._gen_find_members(s.body) }
+            if s.kind == "ForStmt"   { self._gen_find_members(s.body) }
+            i = i + 1
+        }
+    }
+
+    fn _gen_body(self, stmt_ids: List<int>) -> void {
+        var i = 0
+        while i < len(stmt_ids) {
+            let stmt = node_pool[stmt_ids[i]]
+            if stmt.kind == "YieldStmt" {
+                let cont = self._gen_next_state()
+                let val = self.expr(stmt.inner)
+                self._gen_emit("{ _state = " + str(cont) + "; return Some(" + val + "); }")
+                self._gen_case(cont)
+            } elif stmt.kind == "WhileStmt" {
+                self._gen_while(stmt_ids[i])
+            } elif stmt.kind == "IfStmt" {
+                self._gen_generator_if(stmt_ids[i])
+            } elif stmt.kind == "ForStmt" {
+                self._gen_generator_for(stmt_ids[i])
+            } elif stmt.kind == "VarDecl" {
+                let val = self.expr(stmt.inner)
+                self._gen_emit(stmt.name + " = " + val + ";")
+            } elif stmt.kind == "Assignment" {
+                self._gen_emit(self.expr(stmt.target) + " " + stmt.op + " " + self.expr(stmt.inner) + ";")
+            } elif stmt.kind == "ExprStmt" {
+                self._gen_emit(self.expr(stmt.inner) + ";")
+            } elif stmt.kind == "ReturnStmt" {
+                self._gen_emit("_state = " + str(self._gen_DONE) + "; return None;")
+            } elif stmt.kind == "BreakStmt" {
+                self._gen_emit("break;")
+            } elif stmt.kind == "ContinueStmt" {
+                self._gen_emit("continue;")
+            }
+            i = i + 1
+        }
+    }
+
+    fn _gen_while(self, s_id: int) -> void {
+        let s = node_pool[s_id]
+        let cond = self.expr(s.cond)
+        let check = self._gen_next_state()
+        let exit_s = self._gen_next_state()
+        self._gen_emit("_state = " + str(check) + "; break;")
+        self._gen_case(check)
+        self._gen_emit("if (!(" + cond + ")) { _state = " + str(exit_s) + "; break; }")
+        self._gen_body(s.body)
+        self._gen_emit("_state = " + str(check) + "; break;")
+        self._gen_case(exit_s)
+    }
+
+    fn _gen_generator_for(self, s_id: int) -> void {
+        let s = node_pool[s_id]
+        let it = node_pool[s.iterable]
+        if it.kind == "RangeLit" {
+            let start = self.expr(it.start)
+            let end = self.expr(it.end)
+            if self._has_yield(s.body) {
+                let check = self._gen_next_state()
+                let exit_s = self._gen_next_state()
+                self._gen_emit("_state = " + str(check) + "; break;")
+                self._gen_case(check)
+                self._gen_emit("if (" + s.var_name + " >= " + end + ") { _state = " + str(exit_s) + "; break; }")
+                self._gen_body(s.body)
+                self._gen_emit(s.var_name + "++; _state = " + str(check) + "; break;")
+                self._gen_case(exit_s)
+            } else {
+                self._gen_emit("for (int " + s.var_name + " = " + start + "; " + s.var_name + " < " + end + "; ++" + s.var_name + ") {")
+                self._gen_body(s.body)
+                self._gen_emit("}")
+            }
+        } else {
+            let it_expr = self.expr(s.iterable)
+            if self._has_yield(s.body) {
+                let check = self._gen_next_state()
+                let exit_s = self._gen_next_state()
+                self._gen_emit("auto&& _it = " + it_expr + "; auto _ip = _it.begin();")
+                self._gen_emit("_state = " + str(check) + "; break;")
+                self._gen_case(check)
+                self._gen_emit("if (_ip == _it.end()) { _state = " + str(exit_s) + "; break; }")
+                self._gen_emit("auto& " + s.var_name + " = *_ip;")
+                self._gen_body(s.body)
+                self._gen_emit("++_ip; _state = " + str(check) + "; break;")
+                self._gen_case(exit_s)
+            } else {
+                self._gen_emit("for (auto " + s.var_name + " : " + it_expr + ") {")
+                self._gen_body(s.body)
+                self._gen_emit("}")
+            }
+        }
+    }
+
+    fn _gen_generator_if(self, s_id: int) -> void {
+        let s = node_pool[s_id]
+        var has_yield = self._has_yield(s.then_body)
+        if len(s.else_body) > 0 {
+            if self._has_yield(s.else_body) { has_yield = true }
+        }
+        var j = 0
+        while j < len(s.elif_clauses) {
+            let ec = node_pool[s.elif_clauses[j]]
+            if self._has_yield(ec.body) { has_yield = true }
+            j = j + 1
+        }
+        if has_yield {
+            self._gen_if_stateful(s_id)
+        } else {
+            let cond = self.expr(s.cond)
+            self._gen_emit("if (" + cond + ") {")
+            self._gen_body(s.then_body)
+            self._gen_emit("} else {")
+            if len(s.else_body) > 0 {
+                self._gen_body(s.else_body)
+            }
+            var jj = 0
+            while jj < len(s.elif_clauses) {
+                let ec = node_pool[s.elif_clauses[jj]]
+                self._gen_emit("} else if (" + self.expr(ec.cond) + ") {")
+                self._gen_body(ec.body)
+                jj = jj + 1
+            }
+            self._gen_emit("}")
+        }
+    }
+
+    fn _gen_if_stateful(self, s_id: int) -> void {
+        let s = node_pool[s_id]
+        let if_check = self._gen_next_state()
+        let after_s = self._gen_next_state()
+        self._gen_emit("_state = " + str(if_check) + "; break;")
+        self._gen_case(if_check)
+        var br_conds: List<int> = []
+        var br_bodies: List<List<int>> = []
+        push(br_conds, s.cond)
+        push(br_bodies, s.then_body)
+        var j = 0
+        while j < len(s.elif_clauses) {
+            let ec = node_pool[s.elif_clauses[j]]
+            push(br_conds, ec.cond)
+            push(br_bodies, ec.body)
+            j = j + 1
+        }
+        if len(s.else_body) > 0 {
+            push(br_conds, -1)
+            push(br_bodies, s.else_body)
+        }
+        var i = 0
+        while i < len(br_conds) {
+            let cond_node = br_conds[i]
+            let branch_s = self._gen_next_state()
+            if cond_node != -1 {
+                let cond_str = self.expr(cond_node)
+                if i < len(br_conds) - 1 {
+                    self._gen_emit("if (" + cond_str + ") { _state = " + str(branch_s) + "; break; }")
+                } else {
+                    self._gen_emit("if (" + cond_str + ") { _state = " + str(branch_s) + "; break; } else { _state = " + str(after_s) + "; break; }")
+                }
+            } else {
+                self._gen_emit("_state = " + str(branch_s) + "; break;")
+            }
+            self._gen_case(branch_s)
+            self._gen_body(br_bodies[i])
+            self._gen_emit("_state = " + str(after_s) + "; break;")
+            i = i + 1
+        }
+        self._gen_case(after_s)
+    }
+
+    fn _gen_emit_struct(self, fn_id: int) -> void {
+        let fn_node = node_pool[fn_id]
+        let sn = "_gen_" + fn_node.name
+        let inner = self._gen_get_inner_type(fn_id)
+        self.w("struct " + sn + " {")
+        self.depth = self.depth + 1
+        self.w("int _state = 0;")
+        var pi = 0
+        while pi < len(fn_node.params) {
+            let p = node_pool[fn_node.params[pi]]
+            self.w(map_type(p.return_type) + " " + p.name + ";")
+            pi = pi + 1
+        }
+        var vi = 0
+        while vi < len(self._gen_member_names) {
+            let vname = self._gen_member_names[vi]
+            var found = false
+            var pi2 = 0
+            while pi2 < len(fn_node.params) {
+                let p = node_pool[fn_node.params[pi2]]
+                if p.name == vname { found = true; break }
+                pi2 = pi2 + 1
+            }
+            if not found {
+                self.w(self._gen_member_types[vi] + " " + vname + ";")
+            }
+            vi = vi + 1
+        }
+        var cons_params: str = ""
+        var init_list: str = ""
+        var pi3 = 0
+        while pi3 < len(fn_node.params) {
+            let p = node_pool[fn_node.params[pi3]]
+            if pi3 > 0 { cons_params = cons_params + ", "; init_list = init_list + ", " }
+            cons_params = cons_params + map_type(p.return_type) + " " + p.name
+            init_list = init_list + p.name + "(" + p.name + ")"
+            pi3 = pi3 + 1
+        }
+        self.w(sn + "(" + cons_params + ") : " + init_list + " {}")
+        self.w("Option<" + map_type(inner) + "> _next() {")
+        self.depth = self.depth + 1
+        self.w("while (true) {")
+        self.depth = self.depth + 1
+        self.w("switch (_state) {")
+        self.depth = self.depth + 1
+        var li = 0
+        while li < len(self._gen_lines) {
+            self.w(self._gen_lines[li])
+            li = li + 1
+        }
+        self.depth = self.depth - 1
+        self.w("}")
+        self.depth = self.depth - 1
+        self.w("}")
+        self.depth = self.depth - 1
+        self.w("}")
+        self.depth = self.depth - 1
+        self.w("};")
+    }
+
+    fn _gen_emit_wrapper(self, fn_id: int) -> void {
+        let fn_node = node_pool[fn_id]
+        let sn = "_gen_" + fn_node.name
+        let inner = self._gen_get_inner_type(fn_id)
+        var params: str = ""
+        var args: str = ""
+        var pi = 0
+        while pi < len(fn_node.params) {
+            let p = node_pool[fn_node.params[pi]]
+            if pi > 0 { params = params + ", "; args = args + ", " }
+            params = params + map_type(p.return_type) + " " + p.name
+            args = args + p.name
+            pi = pi + 1
+        }
+        let ret = "Generator<" + map_type(inner) + ">"
+        self.w(ret + " " + fn_node.name + "(" + params + ") {")
+        self.depth = self.depth + 1
+        self.w("auto gen = " + sn + "(" + args + ");")
+        self.w("return " + ret + "([gen]() mutable -> Option<" + map_type(inner) + "> { return gen._next(); });")
+        self.depth = self.depth - 1
+        self.w("}")
+        self.w("")
+    }
+
+    fn gen_generator_fn(self, node_id: int) -> void {
+        // Initialize generator state
+        self._gen_lines = []
+        self._gen_state = 1
+        self._gen_DONE = 9999
+        self._gen_member_names = []
+        self._gen_member_types = []
+        // Build state machine
+        self._gen_find_members(node_pool[node_id].body)
+        self._gen_case(0)
+        self._gen_body(node_pool[node_id].body)
+        self._gen_emit("_state = " + str(self._gen_DONE) + "; return None;")
+        self._gen_case(self._gen_DONE)
+        self._gen_emit("return None;")
+        // Emit struct + wrapper
+        self._gen_emit_struct(node_id)
+        self._gen_emit_wrapper(node_id)
+    }
+
     fn gen_fn(self, node_id: int) -> void {
         let node = node_pool[node_id]
+        if self._has_yield(node.body) {
+            self.gen_generator_fn(node_id)
+            return
+        }
         if len(node.generics) > 0 {
             var tmpl: str = "template<"
             var i = 0
@@ -1807,9 +2209,7 @@ class CodeGen {
             self.w("inline void print(const std::string& v) { std::cout << v << \"\\n\"; }")
             self.w("template<typename T> void print(const std::vector<T>& v) {")
             self.depth = self.depth + 1
-            self.w("std::cout << \"[\";")
-            self.w("for (size_t i=0;i<v.size();i++){if(i)std::cout<<\", \";std::cout<<v[i];}")
-            self.w("std::cout << \"]\\n\";")
+            self.w("std::cout << str(v) << \"\\n\";")
             self.depth = self.depth - 1
             self.w("}")
             self.w("template<typename T> void print(const std::optional<T>& o){")
@@ -1886,6 +2286,71 @@ class CodeGen {
             self.depth = self.depth - 1
             self.w("}")
             self.w("")
+            self.w("// ── itertools (List<T>) ───")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_combinations(const std::vector<T>& v,int k){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> r; int n=(int)v.size();")
+            self.w("if(k>n||k<=0)return r;")
+            self.w("std::vector<int> idx(k); for(int i=0;i<k;i++)idx[i]=i;")
+            self.w("while(true){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> c(k); for(int i=0;i<k;i++)c[i]=v[idx[i]]; r.push_back(c);")
+            self.w("int i=k-1; while(i>=0&&idx[i]==n-k+i)i--;")
+            self.w("if(i<0)break; idx[i]++;")
+            self.w("for(int j=i+1;j<k;j++)idx[j]=idx[j-1]+1;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_permutations(const std::vector<T>& v,int k){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> r; int n=(int)v.size();")
+            self.w("if(k>n||k<=0)return r;")
+            self.w("std::vector<int> idx(k); std::vector<bool> used(n,false);")
+            self.w("std::function<void(int)> perm=[&](int pos){")
+            self.depth = self.depth + 1
+            self.w("if(pos==k){std::vector<T> p(k); for(int i=0;i<k;i++)p[i]=v[idx[i]]; r.push_back(p); return;}")
+            self.w("for(int i=0;i<n;i++){if(!used[i]){used[i]=true; idx[pos]=i; perm(pos+1); used[i]=false;}}")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("perm(0); return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_chunked(const std::vector<T>& v,int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> r; int sz=(int)v.size();")
+            self.w("if(n<=0)return r;")
+            self.w("for(int i=0;i<sz;i+=n){std::vector<T> chunk; int end=(i+n>sz)?sz:(i+n); for(int j=i;j<end;j++)chunk.push_back(v[j]); r.push_back(chunk);}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_windowed(const std::vector<T>& v,int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> r; int sz=(int)v.size();")
+            self.w("if(n<=0||n>sz)return r;")
+            self.w("for(int i=0;i<=sz-n;i++){std::vector<T> win; for(int j=i;j<i+n;j++)win.push_back(v[j]); r.push_back(win);}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_pairwise(const std::vector<T>& v){ return _ox_windowed(v,2); }")
+            self.w("template<typename T> std::vector<T> _ox_reversed(const std::vector<T>& v){ return std::vector<T>(v.rbegin(),v.rend()); }")
+            self.w("template<typename T> std::vector<T> _ox_cycle(const std::vector<T>& v,int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> r; r.reserve(v.size()*n); for(int i=0;i<n;i++){for(const auto& x:v)r.push_back(x);} return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<T> _ox_take_while(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> r; for(const auto& x:v){if(!fn(x))break; r.push_back(x);} return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::vector<T> _ox_drop_while(const std::vector<T>& v,bool(*fn)(T)){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> r; bool dropping=true; for(const auto& x:v){if(dropping&&fn(x))continue; dropping=false; r.push_back(x);} return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
             self.w("// ── range ───")
             self.w("inline std::vector<int> range(int n){")
             self.depth = self.depth + 1
@@ -1899,6 +2364,38 @@ class CodeGen {
             self.w("for(int i=a;i<b;i++) r.push_back(i); return r;")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("")
+            self.w("// ── Generator<T> ───")
+            self.w("template<typename T>")
+            self.w("class Generator {")
+            self.depth = self.depth + 1
+            self.w("public:")
+            self.w("std::function<Option<T>()> _next_fn;")
+            self.w("Generator() = default;")
+            self.w("template<typename F> Generator(F fn) : _next_fn(std::move(fn)) {}")
+            self.w("bool next() { auto r = _next_fn(); if (r) { _current = r; return true; } return false; }")
+            self.w("T value() { return *_current; }")
+            self.w("class Iterator {")
+            self.depth = self.depth + 1
+            self.w("public:")
+            self.w("Generator* _gen; bool _done;")
+            self.w("Iterator(Generator* gen, bool done) : _gen(gen), _done(done) {")
+            self.depth = self.depth + 1
+            self.w("if (!_done && _gen->_next_fn) { _done = !_gen->next(); }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("T operator*() { return _gen->value(); }")
+            self.w("bool operator!=(const Iterator& o) { return _done != o._done; }")
+            self.w("Iterator& operator++() { _done = !_gen->next(); return *this; }")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("Iterator begin() { return Iterator(this, false); }")
+            self.w("Iterator end() { return Iterator(this, true); }")
+            self.depth = self.depth - 1
+            self.w("private:")
+            self.w("Option<T> _current;")
+            self.depth = self.depth - 1
+            self.w("};")
             self.w("")
             self.w("// ── conversions ───")
             self.w("inline std::string str(const std::string& v){ return v; }")
@@ -1914,6 +2411,18 @@ class CodeGen {
             self.w("template<typename T, typename E> std::string str(const Result<T,E>& r){")
             self.depth = self.depth + 1
             self.w("if(r.is_ok) return \"Ok(\"+str(r.value)+\")\"; else return \"Err(\"+str(r.error)+\")\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::string str(const std::vector<T>& v){")
+            self.depth = self.depth + 1
+            self.w("std::string r=\"[\";")
+            self.w("for(size_t i=0;i<v.size();i++){if(i)r+=\", \";r+=str(v[i]);}")
+            self.w("return r+\"]\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T> std::string str(const Generator<T>& g){")
+            self.depth = self.depth + 1
+            self.w("(void)g; return \"<generator>\";")
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline int to_int(const std::string& s) { return std::stoi(s); }")

@@ -156,7 +156,7 @@ class Formatter:
             self._w('self')
             if node.params:
                 self._w(', ')
-        for i, (pname, ptype) in enumerate(node.params):
+        for i, (pname, ptype, *_) in enumerate(node.params):
             if i > 0:
                 self._w(', ')
             self._w(pname)

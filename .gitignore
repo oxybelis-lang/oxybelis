@@ -20,3 +20,6 @@ extension/out/
 dist/
 *.egg-info/
 .vscode/
+
+# LSP debug logs
+lsp_debug*.log

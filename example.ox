@@ -73,6 +73,12 @@ class Vector2 {
     }
 }
 
+// ── Struct-like class (Nim's "object") ──────────────────────────
+class Person {
+    name: str;
+    age: int;
+}
+
 class Counter {
     value: int;
 
@@ -138,10 +144,75 @@ fn http_status(code: int) -> str {
 }
 
 // ── Functional chaining helpers ────────────────────────────────
-fn dbl(x: int) -> int { return x * 2; }
-fn is_even(x: int) -> bool { return x % 2 == 0; }
-fn add(a: int, b: int) -> int { return a + b; }
-fn print_item(x: int) { print(x); }
+fn dbl(x: int) -> int {
+    return x * 2;
+}
+
+fn is_even(x: int) -> bool {
+    return x % 2 == 0;
+}
+
+fn is_odd(x: int) -> bool {
+    return x % 2 == 1;
+}
+
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn print_item(x: int) {
+    print(x);
+}
+
+fn lt4(x: int) -> bool {
+    return x < 4;
+}
+
+// ── Generators (lazy sequences with yield) ───────────────────────
+fn count_to(n: int) -> Generator<int> {
+    var i = 0;
+    while i < n {
+        yield i;
+        i += 1;
+    }
+}
+
+fn range_from(start: int, end: int) -> Generator<int> {
+    var i = start;
+    while i < end {
+        yield i;
+        i += 1;
+    }
+}
+
+fn fib_gen(limit: int) -> Generator<int> {
+    var a = 0;
+    var b = 1;
+    while a < limit {
+        yield a;
+        var next = a + b;
+        a = b;
+        b = next;
+    }
+}
+
+fn even_numbers(limit: int) -> Generator<int> {
+    var i = 0;
+    while i < limit {
+        if i % 2 == 0 {
+            yield i;
+        }
+        i += 1;
+    }
+}
+
+fn multiples_of(n: int, limit: int) -> Generator<int> {
+    var i = n;
+    while i < limit {
+        yield i;
+        i += n;
+    }
+}
 
 // ── Main ──────────────────────────────────────────────────────
 fn main() {
@@ -152,6 +223,7 @@ fn main() {
     print(greet("World"));
     print(greet("Oxybelis"));
     print("");
+
 
     // Arithmetic & recursion
     print("factorial(10) =");
@@ -223,49 +295,146 @@ fn main() {
     print(c.get());
     print("");
 
+    // ── Generators ─────────────────────────────────────────
+    print("═══ Generator Demo ═══");
+    print("");
+
+    print("count_to(5):");
+    for x in count_to(5) {
+        print(x);
+    }
+    print("");
+
+    print("range_from(3, 8):");
+    for x in range_from(3, 8) {
+        print(x);
+    }
+    print("");
+
+    print("fib_gen(50):");
+    for x in fib_gen(50) {
+        print(x);
+    }
+    print("");
+
+    print("even_numbers(20):");
+    for x in even_numbers(20) {
+        print(x);
+    }
+    print("");
+
+    print("multiples_of(7, 50):");
+    for x in multiples_of(7, 50) {
+        print(x);
+    }
+    print("");
+
     // ── Functional chaining ─────────────────────────────────
     print("═══ Functional Chaining Demo ═══");
     print("");
-
     var numbers: List<int> = [1, 2, 3, 4, 5, 6];
-
     print("numbers.map(dbl):");
     let dbld = numbers.map(dbl);
     print(dbld);
-
     print("numbers.filter(is_even):");
     let evens = numbers.filter(is_even);
     print(evens);
-
     print("numbers.reduce(0, add):");
     let sum = numbers.reduce(0, add);
     print(sum);
-
     print("numbers.any(is_even):");
     print(numbers.any(is_even));
-
     print("numbers.all(is_even):");
     print(numbers.all(is_even));
-
     print("numbers.find(is_even):");
     print(numbers.find(is_even));
-
     print("numbers.sum():");
     print(numbers.sum());
-
     print("numbers.min():");
     print(numbers.min());
-
     print("numbers.max():");
     print(numbers.max());
-
     print("numbers.for_each(print_item):");
     numbers.for_each(print_item);
-
     print("Chained: numbers.filter(is_even).map(dbl):");
     let chained = numbers.filter(is_even).map(dbl);
     print(chained);
-
     print("");
+    // ── Iterator toolkit (itertools-style) ─────────────────
+    print("═══ Iterator Toolkit ═══");
+    print("");
+    var items: List<int> = [1, 2, 3, 4, 5];
+
+    print("items =");
+    print(items);
+    print("");
+
+    print("items.combinations(2):");
+    print(items.combinations(2));
+    print("items.permutations(2):");
+    print(items.permutations(2));
+    print("");
+
+    print("items.chunked(2):");
+    print(items.chunked(2));
+    print("items.chunked(3):");
+    print(items.chunked(3));
+    print("items.windowed(3):");
+    print(items.windowed(3));
+    print("items.pairwise():");
+    print(items.pairwise());
+    print("");
+
+    print("items.reversed():");
+    print(items.reversed());
+    print("items.cycle(3):");
+    print(items.cycle(3));
+    print("");
+
+    print("items.take_while(lt4):");
+    print(items.take_while(lt4));
+    print("items.drop_while(lt4):");
+    print(items.drop_while(lt4));
+    print("");
+
+    // ── Generator + chaining composition ──────────────────
+    print("═══ Generator + Chaining ═══");
+    print("");
+
+    print("Squares of count_to(6):");
+    for x in count_to(6) {
+        print(x * x);
+    }
+    print("");
+
+    print("Even fib numbers < 100:");
+    for x in fib_gen(100) {
+        if x % 2 == 0 {
+            print(x);
+        }
+    }
+    print("");
+
+    print("═══ Nim Showcase ═══");
+    print("");
+
+    // ── Person list + string concatenation (Nim fmt"{}") ──
+    let people: List<Person> = [
+        Person { name: "John", age: 45 },
+        Person { name: "Kate", age: 30 }
+    ];
+    print("People:");
+    for person in people {
+        print(person.name + " is " + str(person.age) + " years old");
+    }
+    print("");
+
+    // ── Filter-based iterator (Nim's "yield") ──
+    print("Odd numbers from [3, 6, 9, 12, 15, 18]:");
+    for odd in [3, 6, 9, 12, 15, 18].filter(is_odd) {
+        print(odd);
+    }
+    print("");
+
     print("═══ Done ═══");
 }

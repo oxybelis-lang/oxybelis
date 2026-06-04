@@ -183,8 +183,9 @@ def _render_span(span: Span, src: SourceFile, lines: List[str],
                  severity: Severity, indent: int = 0) -> None:
     ins = ' ' * indent
     ac = _ARROW_COLOR.get(severity, R)
-    loc = (f'{src.path}:{span.start_line}:{span.start_col}' if src.path
-           else f'{span.start_line}:{span.start_col}')
+    end = f'-{span.end_col}' if span.end_col != span.start_col else ''
+    loc = (f'{src.path}:{span.start_line}:{span.start_col}{end}' if src.path
+           else f'{span.start_line}:{span.start_col}{end}')
     lines.append(f'{ins}{Style.BOLD} -->{R} {Style.GRAY}{loc}{R}')
     pad = ' ' * len(str(span.start_line))
     lines.append(f'{ins}{pad} |')

@@ -7,6 +7,7 @@ fn add(acc: int, x: int) -> int { return acc + x }
 fn gt3(x: int) -> bool { return x > 3 }
 fn lt10(x: int) -> bool { return x < 10 }
 fn eq3(x: int) -> bool { return x == 3 }
+fn lt3(x: int) -> bool { return x < 3 }
 
 fn main() {
     // ── List basics ──
@@ -70,6 +71,40 @@ fn main() {
     print(map_contains(m, ka))
     print(map_contains(m, kz))
     print(map_get(m, kb))
+    
+    // ── itertools ──
+    var it: List<int> = [1, 2, 3, 4]
+    print(it)
+    
+    let combs = it.combinations(2)
+    print(combs)
+    
+    let perms = it.permutations(2)
+    print(perms)
+    
+    let chunky = it.chunked(2)
+    print(chunky)
+    
+    let chunky3 = it.chunked(3)
+    print(chunky3)
+    
+    let windy = it.windowed(3)
+    print(windy)
+    
+    let pairs = it.pairwise()
+    print(pairs)
+    
+    let rev = it.reversed()
+    print(rev)
+    
+    let cycled = it.cycle(2)
+    print(cycled)
+    
+    let tw = it.take_while(lt3)
+    print(tw)
+    
+    let dw = it.drop_while(lt3)
+    print(dw)
     
     // ── for over list ──
     var total = 0

@@ -15,6 +15,19 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Optional, List as PyList, Any
 
+import io, os, atexit, sys
+
+_D_FILE = open(rf'D:\Projects\oxybelis\lsp_debug_{os.getpid()}.log', 'w', encoding='utf-8')
+def D(*args):
+    msg = "[ox-lsp] " + " ".join(str(a) for a in args) + "\n"
+    _D_FILE.write(msg)
+    _D_FILE.flush()
+    # Also write to stderr which VS Code captures
+    sys.stderr.write(msg)
+    sys.stderr.flush()
+
+D("MODULE LOADED", f"pid={os.getpid()}", f"argv={sys.argv}")
+
 from oxybelis import Lexer, Parser, TypeChecker, compile_source, TT
 from ox_diag import (Span, Severity, Diagnostic, SourceFile,
                      render_diagnostics, highlight_ox)
@@ -39,35 +52,57 @@ class LSPConnection:
         self._buf = b''
         self._content_length = 0
 
-    def read_message(self) -> Optional[LSPMessage]:
-        while True:
-            if self._content_length == 0 and b'\r\n\r\n' in self._buf:
-                header, _, rest = self._buf.partition(b'\r\n\r\n')
-                self._buf = rest
-                for line in header.decode('ascii').split('\r\n'):
-                    if line.lower().startswith('content-length:'):
-                        self._content_length = int(line.split(':')[1].strip())
-
-            if self._content_length > 0 and len(self._buf) >= self._content_length:
-                raw = self._buf[:self._content_length]
-                self._buf = self._buf[self._content_length:]
-                self._content_length = 0
-                try:
-                    msg = json.loads(raw.decode('utf-8'))
-                    return LSPMessage(
-                        method=msg.get('method', ''),
-                        params=msg.get('params', {}),
-                        id=msg.get('id'),
-                        result=msg.get('result'),
-                        error=msg.get('error'),
-                    )
-                except json.JSONDecodeError:
-                    return None
-
-            chunk = sys.stdin.buffer.read(4096)
+    def _fill(self, needed: int) -> bool:
+        """Ensure at least `needed` bytes are in the buffer. Returns False on EOF."""
+        while len(self._buf) < needed:
+            chunk = sys.stdin.buffer.read1(65536)
             if not chunk:
-                return None
+                return False
             self._buf += chunk
+        return True
+
+    def read_message(self) -> Optional[LSPMessage]:
+        # Read until we have the header delimiter
+        if not self._fill(1):
+            return None
+        while b'\r\n\r\n' not in self._buf:
+            if not self._fill(len(self._buf) + 1):
+                return None
+
+        header, _, rest = self._buf.partition(b'\r\n\r\n')
+        D(f"found header: {header[:100]!r}")
+        self._buf = rest
+        content_length = 0
+        for line in header.decode('ascii').split('\r\n'):
+            if line.lower().startswith('content-length:'):
+                content_length = int(line.split(':')[1].strip())
+                D(f"parsed content_length={content_length}")
+
+        if content_length <= 0:
+            D("invalid content_length")
+            return None
+
+        # Read full body
+        if not self._fill(content_length):
+            D("EOF reading body")
+            return None
+        raw = self._buf[:content_length]
+        self._buf = self._buf[content_length:]
+
+        D(f"parsing body of {len(raw)} bytes: {raw[:80]!r}")
+        try:
+            msg = json.loads(raw.decode('utf-8'))
+            D(f"parsed msg: method={msg.get('method','?')}, id={msg.get('id','?')}")
+            return LSPMessage(
+                method=msg.get('method', ''),
+                params=msg.get('params', {}),
+                id=msg.get('id'),
+                result=msg.get('result'),
+                error=msg.get('error'),
+            )
+        except json.JSONDecodeError as e:
+            D(f"JSON decode error: {e}")
+            return None
 
     def send_notification(self, method: str, params: dict = None):
         self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
@@ -184,7 +219,7 @@ _OX_KEYWORDS = frozenset({
     'fn', 'let', 'var', 'class', 'if', 'else', 'elif',
     'for', 'in', 'while', 'return', 'match', 'lazy', 'pub',
     'true', 'false', 'None', 'Some', 'import', 'and', 'or', 'not',
-    'break', 'continue',
+    'break', 'continue', 'self',
 })
 _OX_TYPES = frozenset({'int', 'float', 'bool', 'str', 'void', 'List', 'Map', 'Option'})
 
@@ -202,12 +237,11 @@ TOKEN_COMMENT = 8
 
 def get_semantic_tokens(source: str) -> PyList[int]:
     tokens_data: PyList[int] = []
-    i = 0
     prev_line = 0
     prev_col = 0
     ltokens = list(Lexer(source).tokenize())
 
-    for tok in ltokens:
+    for i, tok in enumerate(ltokens):
         if tok.type == TT.EOF:
             break
 
@@ -221,7 +255,7 @@ def get_semantic_tokens(source: str) -> PyList[int]:
                         TT.FOR, TT.IN, TT.WHILE, TT.RETURN, TT.MATCH, TT.LAZY,
                         TT.PUB, TT.BREAK, TT.CONTINUE):
             tok_type = TOKEN_KEYWORD
-        elif word in ('true', 'false', 'None', 'Some', 'and', 'or', 'not'):
+        elif word in _OX_KEYWORDS:
             tok_type = TOKEN_KEYWORD
         elif tok.type in (TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID):
             tok_type = TOKEN_TYPE
@@ -234,7 +268,20 @@ def get_semantic_tokens(source: str) -> PyList[int]:
         elif tok.type == TT.IDENT:
             if word == '_':
                 continue
-            tok_type = TOKEN_VARIABLE
+            prev_tok = ltokens[i - 1] if i > 0 else None
+            next_tok = ltokens[i + 1] if i < len(ltokens) - 1 else None
+            if prev_tok and prev_tok.type == TT.FN:
+                tok_type = TOKEN_FUNCTION
+            elif prev_tok and prev_tok.type == TT.CLASS:
+                tok_type = TOKEN_TYPE
+            elif prev_tok and prev_tok.type == TT.DOT:
+                tok_type = TOKEN_FUNCTION
+            elif next_tok and next_tok.type == TT.LPAREN:
+                tok_type = TOKEN_FUNCTION
+            elif prev_tok and prev_tok.type in (TT.LPAREN, TT.COMMA) and next_tok and next_tok.type == TT.COLON:
+                tok_type = TOKEN_PARAMETER
+            else:
+                tok_type = TOKEN_VARIABLE
         elif tok.type in (TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH, TT.PERCENT,
                           TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ,
                           TT.ASSIGN, TT.PLUS_ASSIGN, TT.MINUS_ASSIGN,
@@ -277,24 +324,21 @@ def get_hover(source: str, line: int, col: int) -> Optional[dict]:
                 break
         offset += col
 
+        checker = TypeChecker(spans, src_file)
+        checker.check(ast)
         for node, sp in spans.items():
             if sp.start <= offset < sp.end:
-                # Found a node — try to get its type
-                try:
-                    checker = TypeChecker(spans, src_file)
-                    checker.check(ast)
-                    node_obj = _find_node_in_stmt_list(ast.stmts, id(node))
-                    if node_obj:
-                        ty = checker._infer_type(node_obj)
+                node_obj = _find_node_in_stmt_list(ast.stmts, node)
+                if node_obj is not None:
+                    ty = getattr(node_obj, '_type', None) or checker._infer_type(node_obj)
+                    if ty and ty != 'void':
                         return {
                             'contents': {
                                 'kind': 'markdown',
                                 'value': f"```oxybelis\n{ty}\n```"
                             }
                         }
-                except Exception:
-                    pass
-                break
+        return None
         return None
     except Exception:
         return None
@@ -302,23 +346,20 @@ def get_hover(source: str, line: int, col: int) -> Optional[dict]:
 
 def _find_node_in_stmt_list(stmts, target_id):
     for s in stmts:
-        if id(s) == target_id:
-            return s
-        for attr in ('body', 'then_body', 'else_body', 'arms', 'elif_clauses'):
-            children = getattr(s, attr, None)
-            if children:
-                if isinstance(children, list):
-                    for child in children:
-                        if isinstance(child, tuple):
-                            for c in child:
-                                result = _recurse_find(c, target_id)
-                                if result:
-                                    return result
-                        else:
-                            result = _recurse_find(child, target_id)
-                            if result:
-                                return result
+        result = _recurse_find(s, target_id)
+        if result:
+            return result
     return None
+
+
+_CHILD_ATTRS = [
+    'body', 'then_body', 'else_body', 'elif_clauses', 'arms',
+    'left', 'right', 'operand', 'value', 'expr', 'cond',
+    'func', 'obj', 'idx', 'target', 'iterable', 'subject',
+    'name_node',
+]
+
+_EXPR_NODE_TYPES = {}
 
 
 def _recurse_find(node, target_id):
@@ -328,9 +369,43 @@ def _recurse_find(node, target_id):
         return node
     if isinstance(node, (list, tuple)):
         for child in node:
+            if isinstance(child, tuple):
+                for c in child:
+                    result = _recurse_find(c, target_id)
+                    if result:
+                        return result
+            else:
+                result = _recurse_find(child, target_id)
+                if result:
+                    return result
+        return None
+    for attr in _CHILD_ATTRS:
+        child = getattr(node, attr, None)
+        if child is not None:
             result = _recurse_find(child, target_id)
             if result:
                 return result
+    if hasattr(node, 'args'):
+        for arg in node.args:
+            result = _recurse_find(arg, target_id)
+            if result:
+                return result
+    if hasattr(node, 'fields'):
+        for fname, fval in node.fields:
+            result = _recurse_find(fval, target_id)
+            if result:
+                return result
+    if hasattr(node, 'elems'):
+        for elem in node.elems:
+            result = _recurse_find(elem, target_id)
+            if result:
+                return result
+    if hasattr(node, 'params'):
+        for p in node.params:
+            if isinstance(p, tuple) and len(p) == 3:
+                result = _recurse_find(p[2], target_id)
+                if result:
+                    return result
     return None
 
 
@@ -423,8 +498,10 @@ def handle_did_open(msg: LSPMessage):
     params = msg.params
     uri = params['textDocument']['uri']
     text = params['textDocument']['text']
+    D(f"didOpen: uri={uri}, text_len={len(text)}")
     doc = state.get_or_create(uri)
     doc.source = text
+    D(f"didOpen: stored doc, keys={list(state.documents.keys())}")
     _publish_diagnostics(uri)
 
 
@@ -432,6 +509,7 @@ def handle_did_change(msg: LSPMessage):
     params = msg.params
     uri = params['textDocument']['uri']
     text = params['contentChanges'][0]['text']
+    D(f"didChange: uri={uri}, text_len={len(text)}")
     doc = state.get_or_create(uri)
     doc.source = text
     _publish_diagnostics(uri)
@@ -452,18 +530,62 @@ def handle_hover(msg: LSPMessage):
     params = msg.params
     uri = params['textDocument']['uri']
     pos = params['position']
+    D(f"hover: uri={uri}, line={pos['line']}, col={pos['character']}")
+    D(f"hover: doc keys={list(state.documents.keys())}")
     doc = state.documents.get(uri)
     if not doc:
+        D(f"hover: DOC NOT FOUND for {uri}")
         conn.send_response(msg.id, None)
         return
     result = get_hover(doc.source, pos['line'], pos['character'])
+    D(f"hover: result={result}")
     conn.send_response(msg.id, result)
 
 
 def handle_completion(msg: LSPMessage):
+    items = list(_KEYWORD_COMPLETIONS)
+    uri = msg.params.get('textDocument', {}).get('uri', '')
+    D(f"completion: uri={uri}")
+    D(f"completion: doc keys={list(state.documents.keys())}")
+    doc = state.documents.get(uri)
+    if doc:
+        D("completion: doc found, adding user symbols")
+        try:
+            from oxybelis import Lexer, Parser, FnDef, ClassDef, VarDecl
+            tokens = Lexer(doc.source).tokenize()
+            parser = Parser(tokens, doc.source)
+            ast = parser.parse()
+            seen = {c['label'] for c in _KEYWORD_COMPLETIONS}
+            for s in ast.stmts:
+                if isinstance(s, FnDef) and s.name not in seen:
+                    seen.add(s.name)
+                    items.append({
+                        'label': s.name,
+                        'kind': 3,
+                        'detail': 'function',
+                        'insertText': s.name,
+                    })
+                if isinstance(s, ClassDef) and s.name not in seen:
+                    seen.add(s.name)
+                    items.append({
+                        'label': s.name,
+                        'kind': 7,
+                        'detail': 'class',
+                        'insertText': s.name,
+                    })
+                if isinstance(s, VarDecl) and s.name not in seen:
+                    seen.add(s.name)
+                    items.append({
+                        'label': s.name,
+                        'kind': 6,
+                        'detail': s.type_ann or 'variable',
+                        'insertText': s.name,
+                    })
+        except Exception:
+            pass
     conn.send_response(msg.id, {
         'isIncomplete': False,
-        'items': _KEYWORD_COMPLETIONS,
+        'items': items,
     })
 
 
@@ -543,6 +665,7 @@ def cli_check(filepath: str):
 # ═══════════════════════════════════════════════════════════════
 
 def main():
+    D("main() entered", f"argv={sys.argv}")
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     if len(sys.argv) > 1:
@@ -558,18 +681,23 @@ def main():
     while True:
         msg = conn.read_message()
         if msg is None:
+            D("read_message returned None, exiting")
             break
         if msg.method == 'exit':
+            D("got exit notification")
             break
+        D(f"handle: method={msg.method}, id={msg.id}")
         handler = _HANDLERS.get(msg.method)
         if handler:
             try:
                 handler(msg)
             except Exception as e:
+                D(f"handler exception: {e}")
+                traceback.print_exc(file=sys.stderr)
                 if msg.id:
                     conn.send_error(msg.id, -32603, str(e))
-                traceback.print_exc()
         elif msg.id:
+            D(f"no handler for {msg.method}")
             conn.send_response(msg.id, None)
 
 

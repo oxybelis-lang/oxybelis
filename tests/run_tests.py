@@ -78,6 +78,17 @@ TESTS = [
         'true',               # map contains "a"
         'false',              # map contains "z"
         '2',                  # map_get("b")
+        '[1, 2, 3, 4]',      # it list
+        '[[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]]',  # combinations(2)
+        '[[1, 2], [1, 3], [1, 4], [2, 1], [2, 3], [2, 4], [3, 1], [3, 2], [3, 4], [4, 1], [4, 2], [4, 3]]',  # permutations(2)
+        '[[1, 2], [3, 4]]',  # chunked(2)
+        '[[1, 2, 3], [4]]',  # chunked(3)
+        '[[1, 2, 3], [2, 3, 4]]',  # windowed(3)
+        '[[1, 2], [2, 3], [3, 4]]',  # pairwise()
+        '[4, 3, 2, 1]',      # reversed()
+        '[1, 2, 3, 4, 1, 2, 3, 4]',  # cycle(2)
+        '[1, 2]',            # take_while(lt3)
+        '[3, 4]',            # drop_while(lt3)
         '15',                 # for over nums total
     ]),
     ('test_option.ox', [
@@ -204,6 +215,25 @@ TESTS = [
         'false',
         'false',
         'false',
+    ]),
+    ('test_generators.ox', [
+        '=== count_to(5) ===',
+        '0',
+        '1',
+        '2',
+        '3',
+        '4',
+        '=== range_from(2, 6) ===',
+        '2',
+        '3',
+        '4',
+        '5',
+        '=== even_up_to(10) ===',
+        '0',
+        '2',
+        '4',
+        '6',
+        '8',
     ]),
 ]
 

@@ -3,15 +3,27 @@
 A statically-typed, Python-inspired language that transpiles to C++.
 
 ```rust
-fn main() -> void {
-    let msg: str = "Hello from Oxybelis!"
-    print(msg)
+fn main() {
+    for x in fib_gen(50) {
+        print(x);
+    }
+}
+
+fn fib_gen(limit: int) -> Generator<int> {
+    var a = 0;
+    var b = 1;
+    while a < limit {
+        yield a;
+        var next = a + b;
+        a = b;
+        b = next;
+    }
 }
 ```
 
 ## Quick Start
 
-**Prerequisites:** A C++ compiler (`g++` on Linux/Windows, `clang++` on macOS).
+**Prerequisites:** A C++20 compiler (`g++` ≥11, `clang++` ≥14, or MSVC).
 
 ### Install
 
@@ -30,14 +42,11 @@ Installs `oxybelis` to `~/.oxybelis/bin/` and adds it to PATH.
 ### Run a file
 
 ```bash
-echo 'fn main() -> void { print("hello world") }' > hello.ox
-oxybelis hello.ox
-# → compiles + runs, prints "hello world"
+echo 'fn main() { print("hello world") }' > hello.ox
+oxybelis hello.ox     # compiles + runs, prints "hello world"
 ```
 
-That's it. No Python, no extra steps. The compiler auto-runs the output.
-
-## Also works with Python
+### Run with Python
 
 ```bash
 git clone https://github.com/oxybelis-lang/oxybelis.git
@@ -49,36 +58,64 @@ The Python version has a full type checker (`--check`). The bootstrapped compile
 
 ## CLI
 
-```bash
-oxybelis example.ox              # compile + run
-oxybelis -S example.ox           # emit C++ to stdout only
-oxybelis -o out.cpp example.ox   # write C++ to file
-oxybelis --cc clang++ file.ox    # use a different C++ compiler
-oxybelis example.ox --check      # type-check only (Python version)
+```
+oxybelis example.ox               # compile + run
+oxybelis -S example.ox            # emit C++ to stdout
+oxybelis -o out.cpp example.ox    # write C++ to file
+oxybelis --cc clang++ file.ox     # use a different C++ compiler
+oxybelis example.ox --check       # type-check only (Python version)
 ```
 
-## Language
+## Language Features
 
-- Python-inspired syntax with `{}` blocks
-- Static typing: `int`, `float`, `bool`, `str`, `void`, generics
-- Classes with fields and methods
-- Pattern matching with ranges
-- Null safety via `Option<T>`
-- `Result<T, E>` with `?` operator
-- `let` (immutable) / `var` (mutable)
-- Standard library: `json`, `collections`, `path`, `fs`
-- Self-hosting compiler in `compiler.ox`
+- **Python-inspired syntax** with `{}` blocks
+- **Static typing:** `int`, `float`, `bool`, `str`, `void`, generics
+- **Generators:** `yield` keyword with state-machine transpilation — no C++20 coroutines needed. `Generator<T>` supports range-for iteration.
+- **Functional chaining:** `.map()`, `.filter()`, `.reduce()`, `.any()`, `.all()`, `.find()`, `.sum()`, `.min()`, `.max()`, `.for_each()`
+- **Iterator toolkit:** `.combinations(k)`, `.permutations(k)`, `.chunked(n)`, `.windowed(n)`, `.pairwise()`, `.reversed()`, `.cycle(n)`, `.take_while(pred)`, `.drop_while(pred)`
+- **Classes** with fields and methods
+- **Pattern matching** with ranges and wildcards
+- **Null safety** via `Option<T>` (maps to `std::optional`)
+- **`Result<T, E>`** with `?` operator
+- **`let`** (immutable) / **`var`** (mutable) bindings
+- **Standard library:** `json`, `collections`, `path`, `fs`
+- **Self-hosting** compiler written in Oxybelis itself
+
+## Examples
+
+```bash
+# Try the feature-specific examples:
+python oxybelis.py examples/generators.ox     # yield / Generator<T>
+python oxybelis.py examples/functional.ox     # map, filter, reduce, ...
+python oxybelis.py examples/itertools.ox      # combinations, chunked, ...
+python oxybelis.py examples/classes.ox        # classes and methods
+python oxybelis.py examples/match.ox          # pattern matching
+python oxybelis.py examples/option.ox         # Option/Optional type
+python oxybelis.py examples/basics.ox         # basic functions and types
+python oxybelis.py examples/nim_like.ox       # Nim-style features
+
+# Or the comprehensive showcase:
+python oxybelis.py example.ox
+```
 
 ## Project Structure
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
 | `oxybelis.py` | Python reference compiler (full type checker) |
 | `compiler.ox` | Self-hosting compiler (bootstrap target) |
-| `compiler.exe` | Pre-built bootstrapped compiler (in releases) |
-| `oxlib/` | Standard library modules |
+| `compiler.exe` | Pre-built bootstrapped compiler |
+| `oxlib/` | Standard library modules (`json`, `path`, `fs`, `collections`) |
+| `examples/` | Feature-specific example programs |
 | `tests/` | Test suite (`python tests/run_tests.py`) |
 | `install.ps1` / `install.sh` | Cross-platform installers |
+
+## Test
+
+```bash
+python tests/run_tests.py          # run all test suites
+python oxybelis.py example.ox      # compile + run the full demo
+```
 
 ## License
 
