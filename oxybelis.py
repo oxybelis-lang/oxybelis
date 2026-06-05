@@ -3069,12 +3069,17 @@ def main():
         with open(cpp_file, 'w', encoding='utf-8') as f:
             f.write(cpp)
         try:
-            # Auto-detect NumCpp include path relative to compiler script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            numcpp_dir = os.path.join(script_dir, 'NumCpp', 'include')
+            # Auto-detect NumCpp include path
+            numcpp_dirs = [
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'NumCpp', 'include'),
+                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'NumCpp', 'include'),
+                os.path.join(os.getcwd(), 'NumCpp', 'include'),
+            ]
             extra_flags = []
-            if os.path.isdir(numcpp_dir):
-                extra_flags = [f'-I{numcpp_dir}']
+            for d in numcpp_dirs:
+                if os.path.isdir(d):
+                    extra_flags = [f'-I{d}']
+                    break
             mconsole = ['-mconsole'] if sys.platform == 'win32' else []
             cflags_list = shlex.split(args.cflags) if hasattr(shlex, 'split') else args.cflags.split()
             subprocess.run([args.cc] + extra_flags + cflags_list + mconsole +

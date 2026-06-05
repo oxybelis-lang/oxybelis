@@ -47,6 +47,15 @@ def build():
         if os.path.isdir(path):
             shutil.rmtree(path)
 
+    # Bundle NumCpp headers alongside the exes
+    numcpp_src = os.path.join('NumCpp', 'include')
+    numcpp_dst = os.path.join(OUT_DIR, 'NumCpp', 'include')
+    if os.path.isdir(numcpp_src):
+        if os.path.isdir(numcpp_dst):
+            shutil.rmtree(numcpp_dst)
+        shutil.copytree(numcpp_src, numcpp_dst)
+        print(f"\n-- Bundled NumCpp headers ({numcpp_dst}) --")
+
     print("\n-- Done --")
     for entry in sorted(os.listdir(OUT_DIR)):
         size = os.path.getsize(os.path.join(OUT_DIR, entry))
