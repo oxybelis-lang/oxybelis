@@ -1,7 +1,6 @@
 // ────────────────────────────────────────────────────────────
 //  examples/basics.ox  –  Functions, recursion, loops, primes
 // ────────────────────────────────────────────────────────────
-
 fn greet(name: str) -> str {
     return "Hello, " + name + "!";
 }

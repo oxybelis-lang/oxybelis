@@ -17,23 +17,12 @@
 - [ ] **Span tracking in AST** — store source positions in node pool
 
 ### Standard library — Strings
-- [ ] Add to `oxybelis.py` runtime C++ emit:
-  - `str_split(s, delim)` → `List<str>`
-  - `str_trim(s)` → `str`
-  - `str_trim_start(s)` → `str`
-  - `str_trim_end(s)` → `str`
-  - `str_replace(s, old, new)` → `str` (first occurrence)
-  - `str_replace_all(s, old, new)` → `str`
-  - `str_join(list, delim)` → `str`
-  - `to_upper(s)` → `str`
-  - `to_lower(s)` → `str`
-  - `starts_with(s, prefix)` → `bool`
-  - `ends_with(s, suffix)` → `bool`
-  - `str_repeat(s, n)` → `str`
-  - `str_reverse(s)` → `str`
-  - `str_find(s, sub)` → `Option<int>` (index of first occurrence)
-  - `str_format(fmt, args...)` → `str` (sprintf-style)
+- [x] All string functions implemented in `oxybelis.py` RUNTIME C++:
+  - `str_split`, `str_trim`/`str_trim_start`/`str_trim_end`, `str_replace`/`str_replace_all`
+  - `str_join`, `to_upper`/`to_lower`, `starts_with`/`ends_with`
+  - `str_repeat`, `str_reverse`, `str_find`
 - [ ] Mirror all same functions in `compiler.ox` runtime C++ emit
+- [ ] `str_format(fmt, args...)` → `str` (sprintf-style)
 
 ### Standard library — Math
 - [ ] Discuss approach: Eigen vs MKL vs custom lightweight
@@ -163,9 +152,9 @@
 
 ---
 
-## Current Focus (v0.3.2 → v0.4.0)
+## Current Focus (v0.3.3 → v0.4.0)
 
-1. [ ] **String stdlib** — add all string functions to both compilers
-2. [ ] **SPEC.md** — write language specification
-3. [ ] **Math module discussion** — Eigen vs MKL vs custom
-4. [ ] **TUTORIAL.md** — getting started guide
+1. [ ] **Self-hosting compiler parity** — add type checker to `compiler.ox`
+2. [ ] **SPEC.md** — complete language specification document
+3. [ ] **LSP features** — go-to-definition, find references, rename
+4. [ ] **Math module discussion** — Eigen vs MKL vs custom

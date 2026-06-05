@@ -18,6 +18,9 @@ extension/out/
 
 # Build artifacts
 dist/
+ox_lsp.build/
+ox_lsp.dist/
+ox_lsp.onefile-build/
 *.egg-info/
 .vscode/
 

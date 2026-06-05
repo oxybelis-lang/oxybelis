@@ -59,11 +59,11 @@ The Python version has a full type checker (`--check`). The bootstrapped compile
 ## CLI
 
 ```
-oxybelis example.ox               # compile + run
-oxybelis -S example.ox            # emit C++ to stdout
-oxybelis -o out.cpp example.ox    # write C++ to file
+oxybelis examples/basics.ox       # compile + run
+oxybelis -S examples/basics.ox    # emit C++ to stdout
+oxybelis -o out.cpp file.ox       # write C++ to file
 oxybelis --cc clang++ file.ox     # use a different C++ compiler
-oxybelis example.ox --check       # type-check only (Python version)
+oxybelis examples/basics.ox --check  # type-check only (Python version)
 ```
 
 ## Language Features
@@ -93,9 +93,8 @@ python oxybelis.py examples/match.ox          # pattern matching
 python oxybelis.py examples/option.ox         # Option/Optional type
 python oxybelis.py examples/basics.ox         # basic functions and types
 python oxybelis.py examples/nim_like.ox       # Nim-style features
-
-# Or the comprehensive showcase:
-python oxybelis.py example.ox
+python oxybelis.py examples/strings.ox        # string manipulation
+python oxybelis.py examples/math_demo.ox      # math/NumCpp demo
 ```
 
 ## Project Structure
@@ -113,8 +112,8 @@ python oxybelis.py example.ox
 ## Test
 
 ```bash
-python tests/run_tests.py          # run all test suites
-python oxybelis.py example.ox      # compile + run the full demo
+python tests/run_tests.py                  # run all test suites
+python oxybelis.py examples/basics.ox      # compile + run the basics demo
 ```
 
 ## License

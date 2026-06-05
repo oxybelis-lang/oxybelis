@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$VERSION" ]]; then VERSION="0.3.2"; fi
+if [[ -z "$VERSION" ]]; then VERSION="0.3.3"; fi
 
 # ── Platform ──────────────────────────────────────────────────
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

@@ -802,12 +802,12 @@ Memory management is handled by C++ RAII:
 ### 12.1 Compiler
 
 ```bash
-oxybelis example.ox               # compile + run
-oxybelis -S example.ox            # emit C++ to stdout
-oxybelis -o out.cpp example.ox    # write C++ to file
-oxybelis --cc clang++ file.ox     # use a different C++ compiler
-oxybelis example.ox --check       # type-check only (Python version)
-oxybelis example.ox --highlight   # syntax highlight & exit (Python version)
+oxybelis examples/basics.ox          # compile + run
+oxybelis -S examples/basics.ox       # emit C++ to stdout
+oxybelis -o out.cpp file.ox          # write C++ to file
+oxybelis --cc clang++ file.ox        # use a different C++ compiler
+oxybelis examples/basics.ox --check  # type-check only (Python version)
+oxybelis examples/basics.ox --highlight  # syntax highlight & exit (Python version)
 ```
 
 ### 12.2 Python Reference Compiler
@@ -921,6 +921,7 @@ identifier      = (letter | '_') { letter | digit | '_' }
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.3.3 | 2026-06-05 | LSP markdown docs, function token highlighting, formatter blank-line preservation, cleanup |
 | 0.3.2 | 2026-06-04 | Generators, yield, itertools, examples, string stdlib, self-hosting compiler |
 | 0.3.0 | — | Collections, functional chaining, pattern matching |
 | 0.2.0 | — | LSP server, VS Code extension, formatter |

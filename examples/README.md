@@ -16,5 +16,5 @@ python oxybelis.py examples/<name>.ox
 | `generators.ox` | `yield` keyword, `Generator<T>`, state-machine iteration |
 | `itertools.ox` | combinations, permutations, chunked, windowed, pairwise, reversed, cycle, take_while, drop_while |
 | `nim_like.ox` | Nim-style features: list of objects with str(), filter iteration |
-
-For a combined showcase, run `python oxybelis.py example.ox`.
+| `strings.ox` | String manipulation: split, trim, replace, join, upper/lower case, repeat, reverse, find |
+| `math_demo.ox` | Math module: sqrt, sin, cos, linspace, dot product, matrix operations via NumCpp |
