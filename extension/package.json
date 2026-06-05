@@ -25,9 +25,7 @@
     "c++",
     "transpiler"
   ],
-  "activationEvents": [
-    "onLanguage:oxybelis"
-  ],
+
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
