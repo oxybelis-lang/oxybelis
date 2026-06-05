@@ -9,7 +9,7 @@ Usage:  python ox_lsp.py            # stdio LSP server (for VSCode, neovim, etc.
 
 from __future__ import annotations
 
-import sys, os
+import sys, os, re
 import json
 import traceback
 from dataclasses import dataclass, field
@@ -770,6 +770,39 @@ for _name, _docs in _MATH_DOCS.items():
 # Known function names for semantic token highlighting
 _KNOWN_FUNCTIONS: set = set(_BUILTIN_KINDS.keys()) | set(_MATH_DOCS.keys())
 
+# ── Signature help database ──────────────────────────────────
+
+def _parse_signatures(doc: str) -> list[dict]:
+    """Parse doc string into signature entries with label, doc, and parameters."""
+    sigs: list[dict] = []
+    for m in re.finditer(r'```oxybelis\n(.*?)```', doc, re.DOTALL):
+        block = m.group(1).strip()
+        for line in block.split('\n'):
+            line = line.strip()
+            if not line.startswith('fn '):
+                continue
+            params: list[dict] = []
+            pm = re.match(r'fn\s+\w+\(([^)]*)\)', line)
+            if pm:
+                raw = pm.group(1).strip()
+                if raw:
+                    for p in raw.split(','):
+                        p = p.strip()
+                        if p:
+                            params.append({'label': p, 'documentation': ''})
+            sigs.append({
+                'label': line,
+                'documentation': {'kind': 'markdown', 'value': doc},
+                'parameters': params,
+            })
+    return sigs
+
+_SIGNATURES: dict[str, list[dict]] = {}
+for _name, _doc in _ALL_DOCS.items():
+    _sigs = _parse_signatures(_doc)
+    if _sigs:
+        _SIGNATURES[_name] = _sigs
+
 # ═══════════════════════════════════════════════════════════════
 #  LSP HANDLERS
 # ═══════════════════════════════════════════════════════════════
@@ -796,6 +829,9 @@ def handle_initialize(msg: LSPMessage):
             'hoverProvider': True,
             'completionProvider': {
                 'triggerCharacters': [':', '.', '<'],
+            },
+            'signatureHelpProvider': {
+                'triggerCharacters': ['(', ','],
             },
             'documentFormattingProvider': True,
         },
@@ -933,6 +969,100 @@ def handle_shutdown(msg: LSPMessage):
     sys.exit(0)
 
 
+def handle_signature_help(msg: LSPMessage):
+    params = msg.params
+    uri = params['textDocument']['uri']
+    pos = params['position']
+    doc = state.documents.get(uri)
+    if not doc:
+        conn.send_response(msg.id, None)
+        return
+    line = pos['line']
+    col = pos['character']
+    source = doc.source
+    try:
+        tokens = list(Lexer(source).tokenize())
+    except Exception:
+        conn.send_response(msg.id, None)
+        return
+
+    # ── Find the function call that encloses cursor ──
+    # Walk tokens to find the last LPAREN before position with matching nesting
+    fn_name = None
+    active_param = 0
+    paren_depth = 0
+    best_fn = None
+    best_lparen = None  # (token_index, line, col)
+
+    for i, tok in enumerate(tokens):
+        if tok.type == TT.EOF:
+            break
+        if tok.line - 1 > line or (tok.line - 1 == line and tok.col - 1 > col):
+            break
+        # Track nesting
+        if tok.type == TT.LPAREN:
+            # Check if there's an IDENT just before this LPAREN (function call)
+            fn_candidate = None
+            if i > 0 and tokens[i - 1].type == TT.IDENT:
+                fn_candidate = tokens[i - 1].value
+            paren_depth += 1
+            best_fn = fn_candidate
+            best_lparen = (i, tok.line - 1, tok.col - 1)
+        elif tok.type == TT.RPAREN:
+            if paren_depth > 0:
+                paren_depth -= 1
+            if paren_depth == 0:
+                best_fn = None
+                best_lparen = None
+        elif tok.type == TT.COMMA and best_lparen is not None and paren_depth > 0:
+            # Only count commas at the same paren depth as the best LPAREN
+            # For simplicity, count all commas at any depth if we're inside the call
+            pass  # We'll count commas inside the active call range
+
+    if best_lparen is None or best_fn is None:
+        conn.send_response(msg.id, None)
+        return
+
+    # ── Count active parameter by scanning between LPAREN and cursor ──
+    lparen_idx, lp_line, lp_col = best_lparen
+    # Find cursor offset in source
+    source_lines = source.split('\n')
+    offset = 0
+    for sl in range(line):
+        offset += len(source_lines[sl]) + 1
+    offset += col
+
+    # Find LPAREN offset
+    lp_offset = 0
+    for sl in range(lp_line):
+        lp_offset += len(source_lines[sl]) + 1
+    lp_offset += lp_col
+
+    # Count commas between LPAREN and cursor at depth 0
+    depth = 0
+    active_param = 0
+    for j in range(lp_offset + 1, offset):
+        c = source[j]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+        elif c == ',' and depth == 0:
+            active_param += 1
+
+    # ── Look up signature ──
+    sigs = _SIGNATURES.get(best_fn)
+    if not sigs:
+        conn.send_response(msg.id, None)
+        return
+
+    conn.send_response(msg.id, {
+        'signatures': sigs,
+        'activeSignature': 0,
+        'activeParameter': min(active_param, len(sigs[0]['parameters']) - 1 if sigs[0]['parameters'] else 0),
+    })
+
+
 _HANDLERS = {
     'initialize':                         handle_initialize,
     'initialized':                        lambda msg: None,
@@ -940,6 +1070,7 @@ _HANDLERS = {
     'textDocument/didChange':             handle_did_change,
     'textDocument/hover':                 handle_hover,
     'textDocument/completion':            handle_completion,
+    'textDocument/signatureHelp':         handle_signature_help,
     'textDocument/semanticTokens/full':   handle_semantic_tokens,
     'textDocument/formatting':            handle_formatting,
     '$/cancelRequest':                    lambda msg: None,
