@@ -199,10 +199,9 @@ export function activate(context: vscode.ExtensionContext) {
 function startLSP(context: vscode.ExtensionContext, serverBin: string) {
     log(`Starting LSP: ${serverBin}`);
 
-    const serverOptions: ServerOptions = {
-        command: serverBin,
-        transport: TransportKind.stdio,
-    };
+    const serverOptions: ServerOptions = serverBin.endsWith('.py')
+        ? { command: 'python', args: ['-u', serverBin], transport: TransportKind.stdio }
+        : { command: serverBin,                   transport: TransportKind.stdio };
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'oxybelis' }],

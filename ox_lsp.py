@@ -84,6 +84,13 @@ class LSPConnection:
     def __init__(self):
         self._buf = b''
         self._content_length = 0
+        if os.name == 'nt':
+            import msvcrt
+            try:
+                msvcrt.setmode(0, os.O_BINARY)
+                msvcrt.setmode(1, os.O_BINARY)
+            except Exception:
+                pass
 
     def read_message(self) -> Optional[LSPMessage]:
         while True:
@@ -110,7 +117,7 @@ class LSPConnection:
                 except json.JSONDecodeError:
                     return None
 
-            chunk = sys.stdin.buffer.read(4096)
+            chunk = os.read(0, 4096)
             if not chunk:
                 return None
             self._buf += chunk
@@ -129,9 +136,8 @@ class LSPConnection:
         data = json.dumps(obj, ensure_ascii=False)
         body = data.encode('utf-8')
         header = f'Content-Length: {len(body)}\r\n\r\n'
-        sys.stdout.buffer.write(header.encode('ascii'))
-        sys.stdout.buffer.write(body)
-        sys.stdout.buffer.flush()
+        os.write(1, header.encode('ascii'))
+        os.write(1, body)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -294,8 +300,9 @@ def get_semantic_tokens(source: str) -> PyList[int]:
     # ── prev_line / prev_col track the *start* of the last emitted token ──
     prev_line = 0
     prev_col  = 0   # FIX 1: was initialised and updated to the *end* col
+    was_fn_keyword = False  # track if previous non-whitespace token was 'fn'
 
-    for tok in ltokens:
+    for i, tok in enumerate(ltokens):
         if tok.type == TT.EOF:
             break
 
@@ -311,16 +318,6 @@ def get_semantic_tokens(source: str) -> PyList[int]:
         # expected end position.
         if tok.type == TT.STR_LIT:
             # Re-measure: opening quote + raw source chars until closing quote.
-            # The Lexer already advanced past the closing quote, so tok.pos
-            # (set to self.pos after the token is consumed) is one past the
-            # closing quote.  We stored the tok_pos (start of the opening
-            # quote) as tok.pos at construction time *before* advancing —
-            # but in the current Lexer, tok.pos is set to self.pos AFTER
-            # advance, i.e. it's the position of the character following the
-            # token.  We can reconstruct length = tok.pos - start_pos.
-            # However, tok.pos stores the position after the *next* advance,
-            # not a clean "end" marker.  The safest cross-version approach:
-            # count the source characters that belong to this literal.
             raw_length = _measure_str_lit_length(source, line, col)
             length = raw_length if raw_length > 0 else max(len(word) + 2, 1)
         else:
@@ -339,6 +336,8 @@ def get_semantic_tokens(source: str) -> PyList[int]:
                         TT.FOR, TT.IN, TT.WHILE, TT.RETURN, TT.MATCH, TT.LAZY,
                         TT.PUB, TT.BREAK, TT.CONTINUE):
             tok_type = TOKEN_KEYWORD
+            if tok.type == TT.FN:
+                was_fn_keyword = True
         elif word in ('true', 'false', 'None', 'Some', 'and', 'or', 'not'):
             tok_type = TOKEN_KEYWORD
         elif tok.type in (TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID):
@@ -352,7 +351,18 @@ def get_semantic_tokens(source: str) -> PyList[int]:
         elif tok.type == TT.IDENT:
             if word == '_':
                 continue   # wildcard – skip, no highlight
-            tok_type = TOKEN_VARIABLE
+            # Function definition name (IDENT after 'fn')
+            if was_fn_keyword:
+                tok_type = TOKEN_FUNCTION
+            # Known function call (builtin/math name)
+            elif word in _KNOWN_FUNCTIONS:
+                tok_type = TOKEN_FUNCTION
+            # Function call (IDENT followed by LPAREN)
+            elif i + 1 < len(ltokens) and ltokens[i + 1].type == TT.LPAREN:
+                tok_type = TOKEN_FUNCTION
+            else:
+                tok_type = TOKEN_VARIABLE
+            was_fn_keyword = False
         elif tok.type in (TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH, TT.PERCENT,
                           TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ,
                           TT.ASSIGN, TT.PLUS_ASSIGN, TT.MINUS_ASSIGN,
@@ -415,11 +425,15 @@ def _measure_str_lit_length(source: str, line0: int, col0: int) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  HOVER
+#  HOVER (with robust token-level fallback)
 # ═══════════════════════════════════════════════════════════════
 
 def get_hover(source: str, line: int, col: int, filepath: str = '') -> Optional[dict]:
+    """Try full type-check hover; if that fails, fall back to token doc lookup."""
+
+    # ── 1. Complex attempt: parse + type-check and get inferred type ──
     try:
+        _log(f'get_hover: trying type-based hover for {filepath} at {line}:{col}')
         tokens = Lexer(source).tokenize()
         parser = Parser(tokens, source)
         ast = parser.parse()
@@ -452,7 +466,8 @@ def get_hover(source: str, line: int, col: int, filepath: str = '') -> Optional[
                 mod_checker.check(mod_ast)
                 fns = {}
                 for fn_name, sig in mod_checker.fns.items():
-                    if fn_name.startswith('_ox_') or fn_name in ('main', 'print', 'len', 'push', 'pop',
+                    if fn_name.startswith('_ox_') or fn_name in (
+                        'main', 'print', 'len', 'push', 'pop',
                         'range', 'str', 'int', 'float', 'bool', 'sqrt', 'abs', 'pow',
                         'contains', 'read_file', 'read_lines', 'write_file', 'exec',
                         'exit', 'to_int', 'to_float', 'str_get', 'str_sub', 'args',
@@ -499,9 +514,34 @@ def get_hover(source: str, line: int, col: int, filepath: str = '') -> Optional[
                 except Exception:
                     pass
                 break
-        return None
-    except Exception:
-        return None
+        _log('get_hover: type-based approach found nothing, trying fallbacks')
+    except Exception as e:
+        _log(f'get_hover: type-based error: {e}')
+
+    # ── 2. Fallback: token-based doc lookup for builtins / math ──
+    try:
+        tokens = list(Lexer(source).tokenize())
+        for tok in tokens:
+            if tok.type == TT.IDENT and tok.line - 1 == line:
+                tok_start = tok.col - 1
+                tok_len   = max(tok.length, len(tok.value))
+                tok_end   = tok_start + tok_len
+                if tok_start <= col < tok_end:
+                    word = tok.value
+                    docs = _ALL_DOCS.get(word)
+                    if docs:
+                        _log(f'get_hover: token-based match for {word}')
+                        return {
+                            'contents': {
+                                'kind': 'markdown',
+                                'value': docs,
+                            }
+                        }
+                    break
+    except Exception as e:
+        _log(f'get_hover: token-based error: {e}')
+
+    return None
 
 
 _CHILD_ATTRS = [
@@ -653,6 +693,8 @@ _MATH_DOCS: dict[str, str] = {
     'div': 'Element-wise division.\n\n```oxybelis\nfn div(a: Array<float>, b: Array<float>) -> Array<float>\n```',
 }
 
+_ALL_DOCS: dict[str, str] = {**_BUILTIN_DOCS, **_MATH_DOCS}
+
 _KEYWORD_COMPLETIONS: list[dict] = [
     {'label': 'fn',       'kind': 14, 'detail': 'keyword',     'insertText': 'fn '},
     {'label': 'let',      'kind': 14, 'detail': 'keyword',     'insertText': 'let '},
@@ -704,11 +746,29 @@ _BUILTIN_KINDS: dict[str, int] = {
 }
 
 for _name, _kind in _BUILTIN_KINDS.items():
-    _KEYWORD_COMPLETIONS.append({
+    _doc = _ALL_DOCS.get(_name)
+    _item: dict = {
         'label': _name, 'kind': _kind, 'detail': 'builtin',
         'insertText': _name + '()',
+    }
+    if _doc:
+        _item['documentation'] = {'kind': 'markdown', 'value': _doc}
+    _KEYWORD_COMPLETIONS.append(_item)
+
+# Math module completions (triggered when typing e.g. math.sin)
+_MATH_COMPLETIONS: list[dict] = []
+for _name, _docs in _MATH_DOCS.items():
+    _MATH_COMPLETIONS.append({
+        'label': f'math.{_name}',
+        'kind': 3,
+        'detail': 'math',
+        'insertText': _name + '()',
+        'filterText': _name,
+        'documentation': {'kind': 'markdown', 'value': _docs},
     })
 
+# Known function names for semantic token highlighting
+_KNOWN_FUNCTIONS: set = set(_BUILTIN_KINDS.keys()) | set(_MATH_DOCS.keys())
 
 # ═══════════════════════════════════════════════════════════════
 #  LSP HANDLERS
@@ -828,6 +888,7 @@ def handle_completion(msg: LSPMessage):
                     })
         except Exception:
             pass
+    items.extend(_MATH_COMPLETIONS)
     conn.send_response(msg.id, {
         'isIncomplete': False,
         'items': items,
