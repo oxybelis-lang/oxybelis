@@ -67,6 +67,12 @@ class Formatter:
         if self._lines and self._lines[-1] != '':
             self._lines.append('')
 
+    def _blank_if_gap(self, prev, node):
+        psp = self._spans.get(id(prev))
+        nsp = self._spans.get(id(node))
+        if psp and nsp and nsp.start_line - psp.end_line > 1:
+            self._blank()
+
     def _semi(self):
         if self.use_semicolons:
             self._w(';')
@@ -170,8 +176,12 @@ class Formatter:
         self._w(' {')
         self._nl()
         self._push()
+        prev = None
         for s in node.body:
+            if prev is not None:
+                self._blank_if_gap(prev, s)
             self._stmt(s)
+            prev = s
         self._pop()
         self._nl('}')
 
@@ -310,8 +320,12 @@ class Formatter:
             return
         self._nl()
         self._push()
+        prev = None
         for s in body:
+            if prev is not None:
+                self._blank_if_gap(prev, s)
             self._stmt(s)
+            prev = s
         self._pop()
         self._nl('}')
 
