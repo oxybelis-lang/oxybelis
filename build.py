@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 
+VERSION = '0.3.3'
+
 SCRIPTS = [
     ('oxybelis', 'oxybelis.py'),
     ('ox-fmt',    'ox_fmt.py'),
@@ -28,6 +30,8 @@ def build():
             '--onefile',
             '--assume-yes-for-downloads',
             '--include-windows-runtime-dlls=no',
+            '--file-version=' + VERSION,
+            '--product-name=' + name,
             '--output-dir=' + OUT_DIR,
             script,
         ], check=True)
