@@ -55,7 +55,8 @@ jobs:
           else
             CXX="g++"
           fi
-          $CXX -O3 -std=c++20 $MCONSOLE compiler.cpp -o oxybelis${{ matrix.ext }}
+          # Ensure NumCpp headers from the repository are found during compilation
+          $CXX -O3 -std=c++20 -I NumCpp/include $MCONSOLE compiler.cpp -o oxybelis${{ matrix.ext }}
           echo "=== Self-hosting compiler ==="
           ls -la oxybelis${{ matrix.ext }}
 
