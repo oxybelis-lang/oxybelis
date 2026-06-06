@@ -1,6 +1,6 @@
 # Oxybelis Language Specification
 
-**Version:** 0.3.3  
+**Version:** 0.3.4  
 **Status:** Draft  
 
 ---
@@ -167,6 +167,170 @@ class Box<T> { value: T; }
 ```
 
 ---
+
+### 3.6 Collection Types
+
+Oxybelis provides a small set of built-in generic collection types and higher-level containers in the standard library.
+
+| Type | Description | C++ Mapping |
+|------|-------------|-------------|
+| `Set<T>` | Unordered collection of unique elements | `std::unordered_set<T>` |
+| `FrozenSet<T>` | Immutable set of unique elements | `std::unordered_set<T>` (immutable wrapper) |
+| `Dict<K, V>` / `Map<K, V>` | Hash map (dictionary) | `std::unordered_map<K, V>` |
+| `OrderedDict<K, V>` | Mapping that preserves insertion order | (preserved by language API; implementation detail may vary) |
+| `Counter<T>` | Multiset / counting map | `Map<T, int>` |
+
+These types are available either as language built-ins (core containers) or as modules in `oxlib/collections.ox`. They support the APIs described below.
+
+Iteration semantics:
+- `List<T>` iterates elements of type `T`.
+- `Set<T>` iterates elements of type `T` (iteration order is unspecified).
+- `Map<K,V>` / `Dict<K,V>` iteration yields keys of type `K` (use `.items()` to iterate key/value pairs, and `.values()` for values).
+
+Note: `OrderedDict<K,V>` preserves insertion order when iterating `keys()`, `values()`, and `items()`.
+
+Common operations (available as methods or helper functions):
+- `len(c)` — number of elements (works for List, Set, Map, etc.).
+- `contains(coll, x)` / `x in coll` — membership test (Set and Map keys).
+
+- Set operations (for `a: Set<T>`, `b: Set<T>`):
+  - `a.add(x)` / `set_add(a, x)` — insert element
+  - `a.remove(x)` / `set_remove(a, x)` — remove element (error if missing) 
+  - `a.discard(x)` — remove if present (no error)
+  - `a.union(b)` / `a | b` — set union (returns `Set<T>`)
+  - `a.intersection(b)` / `a & b` — set intersection
+  - `a.difference(b)` / `a - b` — set difference
+  - `a.symmetric_difference(b)` / `a ^ b` — symmetric difference
+  - `a.issubset(b)` — true if `a` is subset of `b`
+  - `a.issuperset(b)` — true if `a` is superset of `b`
+
+- Map / Dict operations (for `m: Map<K,V>`):
+  - `m[key]` — indexing (get value; behaviour on missing key depends on API; use `m.get(key, default)` or `map_get` builtin)
+  - `m[key] = v` — set value (uses `map_set` builtin under the hood)
+  - `m.keys()` — `List<K>` of keys (shallow copy)
+  - `m.values()` — `List<V>` of values (shallow copy)
+  - `m.items()` — `List<(K, V)>` of pairs
+  - `m.pop(key)` — remove and return value
+  - `m.update(other)` — insert/overwrite entries from `other`
+
+- `Counter<T>` operations:
+  - `Counter()` constructs an empty counter
+  - `c.update(iterable)` — increment counts from `iterable`
+  - `c.most_common(n)` — returns `List<(T, int)>` ordered by count descending
+  - `c.elements()` — returns `List<T>` with elements repeated by their count
+
+Immutability:
+- `FrozenSet<T>` is an immutable set type. Methods that would mutate a `Set<T>` instead return a new `Set<T>` or `FrozenSet<T>` depending on the operation. `FrozenSet<T>` values are hashable and can be used as keys in maps if the element type is hashable.
+
+Examples:
+
+```oxybelis
+let s: Set<int> = Set<int>()
+s.add(1)
+s.add(2)
+print(len(s))           // 2
+
+let a = Set<int>()
+a.add(1)
+a.add(2)
+let b = Set<int>()
+b.add(2)
+b.add(3)
+print(a.union(b))      // Set: {1,2,3}
+
+let m: Dict<str,int> = Dict<str,int>()
+m["x"] = 10
+print(m.keys())        // ["x"]
+for k in m { print(k) } // iterate keys
+for (k,v) in m.items() { print(k + ": " + str(v)) }
+
+let cnt = Counter<str>()
+cnt.update(["a","b","a"])
+print(cnt.most_common(1)) // [("a", 2)]
+```
+
+### 3.7 Collection APIs (Reference)
+
+This section lists the commonly-available methods and helper functions for the standard collection types. Implementations are provided by the runtime/standard library (`oxlib/collections.ox`) and a subset are exposed as builtins for performance-sensitive operations.
+
+Set<T>
+- Construction: `Set<T>()` — returns an empty set
+- Mutating methods:
+  - `s.add(x)` / `set_add(s, x)` → void
+  - `s.remove(x)` / `set_remove(s, x)` → void (throws if missing)
+  - `s.discard(x)` → void (no error if missing)
+  - `s.clear()` → void
+- Non-mutating / queries:
+  - `len(s)` → int
+  - `s.contains(x)` / `contains(s, x)` → bool
+  - `s.is_empty()` → bool
+  - `s.union(t)` / `set_union(s,t)` → Set<T>
+  - `s.intersection(t)` / `set_intersection(s,t)` → Set<T>
+  - `s.difference(t)` / `set_difference(s,t)` → Set<T>
+  - `s.symmetric_difference(t)` / `set_symdiff(s,t)` → Set<T>
+  - `s.issubset(t)` / `set_is_subset(s,t)` → bool
+  - `s.issuperset(t)` / `set_is_superset(s,t)` → bool
+  - Operators supported: `|` (union), `&` (intersection), `-` (difference), `^` (symmetric difference)
+
+Dict<K,V> / Map<K,V>
+- Construction: `Dict<K,V>()` or `Map<K,V>()`
+- Indexing and mutation:
+  - `m[key]` — get (or insert default, depending on API); prefer `m.get(key, default)` when unsure
+  - `m[key] = v` — set value (maps to `map_set` builtin)
+  - `m.pop(key)` — remove and return value (throws if missing)
+  - `map_get(m, key)`, `map_set(m, key, value)`, `map_contains(m, key)` — builtins
+- Views and iteration:
+  - `m.keys()` → List<K>
+  - `m.values()` → List<V>
+  - `m.items()` → List<(K, V)>
+  - Iteration `for k in m { ... }` iterates keys (use `for (k,v) in m.items()` for pairs)
+
+OrderedDict<K,V>
+- Preserves insertion order for `keys()`, `values()`, `items()` and for iteration.
+- API mirrors `Dict` but with predictable iteration order.
+
+Counter<T>
+- Conceptually `Map<T,int>` with convenience methods:
+  - `Counter()` — construct
+  - `c.update(iterable)` — increment counts for all elements in iterable
+  - `c[elt]` — get count (0 if missing)
+  - `c.most_common(n)` — return `List<(T, int)>` ordered by count desc
+  - `c.elements()` — `List<T>` with elements repeated according to their counts
+
+FrozenSet<T>
+- Immutable set type. Construction via `frozenset(iterable)` or `FrozenSet<T>(existing_set)`.
+- Hashable if element type `T` is hashable. Supports equality and use as map keys.
+
+Concurrency & Mutability
+- Collection types are not thread-safe by default. Concurrent mutation requires user synchronization.
+
+Complexity Notes
+- `Set<T>` operations (`add`, `remove`, `contains`, `len`) are expected O(1) average-case (backed by `std::unordered_set`).
+- `Dict`/`Map` operations (`get`, `set`, `contains`) are expected O(1) average-case (backed by `std::unordered_map`).
+- `OrderedDict` may fall back to `std::map` or a combined vector+hash storage depending on implementation; iteration/preservation of order is guaranteed, complexity depends on underlying representation.
+
+Implementation details
+- The compiler maps `List<T>` → `std::vector<T>`, `Map<K,V>` → `std::unordered_map<K,V>`, and `Set<T>` → `std::unordered_set<T>` in generated C++.
+- For performance, some helper functions are provided as builtins (e.g. `map_get`, `map_set`, `set_add`) and are implemented in the runtime header so calls compile to idiomatic C++.
+
+Examples (usage patterns):
+
+```oxybelis
+let s = Set<int>()
+s.add(1)
+if s.contains(1) {
+    print("has 1")
+}
+
+let d = Dict<str,int>()
+d["a"] = 1
+for k in d.keys() { print(k) }
+for (k,v) in d.items() { print(k + ": " + str(v)) }
+
+let c = Counter<str>()
+c.update(["x","y","x"]) // c["x"] == 2
+```
+
 
 ## 4. Expressions
 
@@ -819,10 +983,12 @@ oxybelis examples/basics.ox --highlight  # syntax highlight & exit (Python versi
 
 ### 12.3 Self-Hosting Compiler
 
-`compiler.ox` + `compiler.exe` is the bootstrapped compiler. It lacks:
-- Type checker
-- Rich diagnostics (bare error messages only)
-- `--check` and `--highlight` flags
+`compiler.ox` + `compiler.exe` is the bootstrapped compiler.
+- ✅ Full type checker (`--check`)
+- ✅ Rich diagnostics — `Span`/`Diagnostic` types, severity levels, error codes, source underlines
+- ✅ `--check` flag for type-check-only mode
+- ✅ Self-hosting: `compiler.exe compiler.ox -S` produces a correct `compiler2`.
+- ❌ `--highlight` flag (not yet implemented in self-hosted version)
 
 ### 12.4 LSP Server
 
@@ -921,6 +1087,7 @@ identifier      = (letter | '_') { letter | digit | '_' }
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.3.4 | 2026-06-06 | Self-hosting bootstrap complete: TypeChecker in `compiler.ox`, `--check` passes cleanly, `compiler.exe compiler.ox -S` produces correct C++ |
 | 0.3.3 | 2026-06-05 | LSP markdown docs, function token highlighting, formatter blank-line preservation, cleanup |
 | 0.3.2 | 2026-06-04 | Generators, yield, itertools, examples, string stdlib, self-hosting compiler |
 | 0.3.0 | — | Collections, functional chaining, pattern matching |
