@@ -30,6 +30,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # repository contains a vendored NumCpp tree that is not a git submodule
+          submodules: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
