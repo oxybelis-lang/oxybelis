@@ -1,3 +1,5 @@
+![oxybelis-logo](./oxybelis-logo.png)
+
 # Oxybelis
 
 A statically-typed, Python-inspired language that transpiles to C++.
