@@ -31,8 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # repository contains a vendored NumCpp tree that is not a git submodule
-          submodules: false
+          # NumCpp is a git submodule; fetch-depth 0 ensures full history
+          fetch-depth: 0
+          submodules: recursive
 
       - name: Setup Python
         uses: actions/setup-python@v5
