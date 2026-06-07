@@ -253,6 +253,107 @@ TESTS = [
         '6',
         '8',
     ]),
+    ('test_literal_emission.ox', [
+        'hello',
+        'world',
+        '6',
+        '15',
+    ]),
+    ('test_literal_generics.ox', [
+        '1',
+        '[1, 2]',
+        '[5, 6]',
+        '[9, 10, 11]',
+    ]),
+    ('test_slicing.ox', [
+        '[0, 1, 2, 3, 4, 5]',  # v
+        '1',                    # v[1]
+        '[0, 1, 2, 3, 4, 5]',  # v[:]
+        '[1, 2, 3, 4, 5]',     # v[1:]
+        '[0, 1, 2]',           # v[:3]
+        '[0, 2, 4]',           # v[::2]
+        '[1, 3, 5]',           # v[1::2]
+        '[2, 3, 4]',           # v[2:5]
+        '[1, 3]',              # v[1:5:2]
+    ]),
+    ('test_operators.ox', [
+        '4',                    # a + b x
+        '6',                    # a + b y
+        '-2',                   # a - b x
+        '-2',                   # a - b y
+        '2',                    # a * 2.0 x
+        '4',                    # a * 2.0 y
+    ]),
+    ('test_op_index.ox', [
+        '1',                    # m[0]
+        '5',                    # m[4]
+        '9',                    # m[8]
+        '[1.000000, 2.000000, 3.000000]',  # m[0:3:1] via op_slice
+        '[1.000000, 3.000000, 5.000000, 7.000000]',  # m[::2] via op_slice
+        '[3.000000, 4.000000, 5.000000]',  # m.data[2:5]
+        'done',                 # done
+    ]),
+    ('test_ndarray.ox', [
+        '1',                    # arr[0]
+        '5',                    # arr[4]
+        '9',                    # arr[8]
+        '[1.000000, 2.000000, 3.000000]',  # arr[0:3:1]
+        '[1.000000, 3.000000, 5.000000, 7.000000, 9.000000]',  # arr[::2]
+        'done',                 # done
+    ]),
+    ('test_native_methods.ox', [
+        '11',                   # s.length()
+        'true',                 # s.contains("world")
+        'true',                 # s.starts_with("hello")
+        'true',                 # s.ends_with("world")
+        '2',                    # s.count("o")
+        'Some(6)',              # s.find("world")
+        'HELLO WORLD',          # s.to_upper()
+        'hello world',          # s.to_lower()
+        'hello there',          # s.replace("world", "there")
+        'dlrow olleh',          # s.reverse()
+        '5',                    # v.length()
+        'true',                 # v.contains(3)
+        '2',                    # v.count(2)
+        '3',                    # chars.length()
+        'a',                    # chars[0]
+        'b',                    # chars[1]
+        'c',                    # chars[2]
+        'h',                    # for c in "hi"
+        'i',                    # for c in "hi"
+        'done',                 # done
+    ]),
+    ('test_tuples.ox', [
+        '1',                    # t.0
+        'hello',                # t.1
+        'true',                 # t.2
+        'answer',               # p.0
+        '42',                   # p.1
+        '99',                   # s.0 (single-element tuple)
+        '10',                   # tuple unpacking a
+        '20',                   # tuple unpacking b
+        '30',                   # tuple unpacking c
+        '0',                    # enumerate first pair.0 (index)
+        'a',                    # enumerate first pair.1 (element)
+        '1',                    # enumerate second pair.0
+        'b',                    # enumerate second pair.1
+        '2',                    # enumerate third pair.0
+        'c',                    # enumerate third pair.1
+        '0',                    # enumerate on str first pair.0
+        'a',                    # enumerate on str first pair.1
+        '1',                    # enumerate on str second pair.0
+        'b',                    # enumerate on str second pair.1
+        '2',                    # enumerate on str third pair.0
+        'c',                    # enumerate on str third pair.1
+        '1',                    # sorted list first
+        '1',                    # sorted list second
+        '3',                    # sorted list third
+        '4',                    # sorted list fourth
+        '5',                    # sorted list fifth
+        'a',                    # sorted str first
+        'b',                    # sorted str second
+        'c',                    # sorted str third
+    ]),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────

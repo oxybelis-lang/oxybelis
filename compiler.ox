@@ -52,6 +52,10 @@ class Node {
     is_pub: bool
     is_lazy: bool
     has_self: bool
+    // Source-span tracking for diagnostics
+    s_line: int
+    s_col: int
+    node_type: str  // inferred type cache (set by type checker)
 }
 
 fn alloc_node() -> int {
@@ -70,7 +74,7 @@ fn alloc_node() -> int {
                    name: "", op: "", type_name: "",
                    var_name: "", return_type: "", type_ann: "",
                    is_mutable: false, is_pub: false, is_lazy: false,
-                   has_self: false }
+                   has_self: false, s_line: -1, s_col: -1, node_type: "" }
     push(node_pool, n)
     return len(node_pool) - 1
 }
@@ -343,7 +347,7 @@ fn node_param(name: str, ptype: str) -> int {
     let id = alloc_node()
     node_pool[id].kind = "Param"
     node_pool[id].name = name
-    node_pool[id].return_type = ptype
+    node_pool[id].type_ann = ptype
     return id
 }
 
@@ -378,6 +382,11 @@ fn node_str_id(value: str) -> int {
     return id
 }
 
+fn set_span(node_id: int, line: int, col: int) -> void {
+    node_pool[node_id].s_line = line
+    node_pool[node_id].s_col = col
+}
+
 // ── Error reporting ─────────────────────────────────────────
 fn report_error(src: str, line: int, col: int, msg: str) -> void {
     var lines: List<str> = []
@@ -403,6 +412,96 @@ fn report_error(src: str, line: int, col: int, msg: str) -> void {
     print(pad + " |")
     print(str(line) + " | " + source_line)
     print(pad + " | " + indent + "^")
+}
+
+// ── Type helpers ────────────────────────────────────────────
+fn base_type(ty: str) -> str {
+    var i = 0
+    while i < len(ty) {
+        if str_get(ty, i) == "<" { return str_sub(ty, 0, i) }
+        i = i + 1
+    }
+    return ty
+}
+
+fn type_params(ty: str) -> List<str> {
+    var i = 0
+    while i < len(ty) {
+        if str_get(ty, i) == "<" {
+            let inner = str_sub(ty, i + 1, len(ty) - 1)
+            return split_args(inner)
+        }
+        i = i + 1
+    }
+    return []
+}
+
+// ── Diagnostic types (mirror ox_diag.py) ─────────────────────
+let OX_SEVERITY_ERROR   = "error"
+let OX_SEVERITY_WARNING = "warning"
+let OX_SEVERITY_NOTE    = "note"
+let OX_SEVERITY_HELP    = "help"
+
+class Span {
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+}
+
+class Diagnostic {
+    severity: str
+    message: str
+    code: str
+    s_line: int
+    s_col: int
+}
+
+fn make_diag(severity: str, msg: str, code: str, line: int, col: int) -> Diagnostic {
+    return Diagnostic { severity: severity, message: msg, code: code, s_line: line, s_col: col }
+}
+
+fn render_diags(diags: List<Diagnostic>, src: str, path: str) -> List<str> {
+    var lines: List<str> = []
+    var i = 0
+    while i < len(diags) {
+        push(lines, render_one(diags[i], src, path))
+        i = i + 1
+    }
+    return lines
+}
+
+fn render_one(d: Diagnostic, src: str, path: str) -> str {
+    var result: str = ""
+    if d.code != "" { result = d.code + ": " }
+    result = result + d.message
+    if d.s_line >= 1 {
+        var src_lines: List<str> = []
+        var cur: str = ""
+        var j = 0
+        while j < len(src) {
+            let c: str = str_get(src, j)
+            if c == "\n" { push(src_lines, cur); cur = "" }
+            else { cur = cur + c }
+            j = j + 1
+        }
+        push(src_lines, cur)
+        var source_line: str = ""
+        if d.s_line <= len(src_lines) { source_line = src_lines[d.s_line - 1] }
+        result = result + "\n"
+        if path != "" { result = result + " --> " + path }
+        result = result + ":" + str(d.s_line) + ":" + str(d.s_col)
+        var indent: str = ""
+        var j2 = 0
+        while j2 < d.s_col - 1 { indent = indent + " "; j2 = j2 + 1 }
+        var pad: str = ""
+        j2 = 0
+        while j2 < len(str(d.s_line)) { pad = pad + " "; j2 = j2 + 1 }
+        result = result + "\n" + pad + " |"
+        result = result + "\n" + str(d.s_line) + " | " + source_line
+        result = result + "\n" + pad + " | " + indent + "^"
+    }
+    return result
 }
 
 // ── Token type constants ────────────────────────────────────
@@ -694,6 +793,7 @@ class Parser {
     tokens: List<Token>
     pos: int
     src: str
+    cur_tok: Token
 
     fn peek(self, offset: int) -> Token {
         let i = self.pos + offset
@@ -714,7 +814,13 @@ class Parser {
     fn advance(self) -> Token {
         let t = self.tokens[self.pos]
         if self.pos < len(self.tokens) - 1 { self.pos = self.pos + 1 }
+        self.cur_tok = t
         return t
+    }
+
+    fn span(self, node_id: int) -> int {
+        set_span(node_id, self.cur_tok.line, self.cur_tok.col)
+        return node_id
     }
 
     fn expect(self, type_names: List<str>) -> Token {
@@ -753,7 +859,7 @@ class Parser {
             push(stmts, self.parse_top())
             self.skip_semis()
         }
-        return node_program(stmts)
+        return self.span(node_program(stmts))
     }
 
     fn parse_top(self) -> int {
@@ -778,18 +884,21 @@ class Parser {
 
     fn parse_import(self) -> int {
         self.expect([TT_IMPORT])
-        let path: List<int> = [node_str_id(self.expect([TT_IDENT]).lexeme)]
+        let p1: Token = self.expect([TT_IDENT])
+        let path: List<int> = [self.span(node_str_id(p1.lexeme))]
         while self.matched(self.match_tok([TT_DOT])) {
-            push(path, node_str_id(self.expect([TT_IDENT]).lexeme))
+            let pn: Token = self.expect([TT_IDENT])
+            push(path, self.span(node_str_id(pn.lexeme)))
         }
-        return node_import(path)
+        return self.span(node_import(path))
     }
 
     fn parse_generics(self) -> List<int> {
         let gs: List<int> = []
         if self.matched(self.match_tok([TT_LT])) {
             while not self.check([TT_GT]) {
-                push(gs, node_str_id(self.expect([TT_IDENT]).lexeme))
+                let g_tok: Token = self.expect([TT_IDENT])
+                push(gs, self.span(node_str_id(g_tok.lexeme)))
                 if not self.matched(self.match_tok([TT_COMMA])) { break }
             }
             self.expect([TT_GT])
@@ -815,7 +924,7 @@ class Parser {
                 let pname: str = self.expect([TT_IDENT]).lexeme
                 self.expect([TT_COLON])
                 let ptype: str = self.parse_type()
-                push(params, node_param(pname, ptype))
+                push(params, self.span(node_param(pname, ptype)))
                 if not self.matched(self.match_tok([TT_COMMA])) { break }
             }
         }
@@ -823,7 +932,7 @@ class Parser {
         var ret: str = "void"
         if self.matched(self.match_tok([TT_ARROW])) { ret = self.parse_type() }
         let body: List<int> = self.parse_block()
-        return node_fn_def(name, params, ret, body, is_pub, is_lazy, generics, has_self)
+        return self.span(node_fn_def(name, params, ret, body, is_pub, is_lazy, generics, has_self))
     }
 
     fn parse_class(self) -> int {
@@ -848,12 +957,12 @@ class Parser {
                 let fname: str = self.expect([TT_IDENT]).lexeme
                 self.expect([TT_COLON])
                 let ftype: str = self.parse_type()
-                push(fields, node_param(fname, ftype))
+                push(fields, self.span(node_param(fname, ftype)))
                 self.skip_semis()
             }
         }
         self.expect([TT_RBRACE])
-        return node_class_def(name, fields, methods, generics)
+        return self.span(node_class_def(name, fields, methods, generics))
     }
 
     fn parse_type(self) -> str {
@@ -912,16 +1021,18 @@ class Parser {
         if self.check([TT_WHILE])          { return self.parse_while() }
         if self.check([TT_MATCH])          { return self.parse_match() }
         if self.check([TT_FN])             { return self.parse_fn(false, false) }
-        if self.check([TT_BREAK])          { self.advance(); return node_break() }
-        if self.check([TT_CONTINUE])       { self.advance(); return node_continue() }
+        if self.check([TT_BREAK])          { self.advance(); return self.span(node_break()) }
+        if self.check([TT_CONTINUE])       { self.advance(); return self.span(node_continue()) }
         let expr: int = self.parse_expr()
         if self.check([TT_ASSIGN, TT_PLUS_ASSIGN, TT_MINUS_ASSIGN,
                        TT_STAR_ASSIGN, TT_SLASH_ASSIGN]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let rhs: int = self.parse_expr()
-            return node_assign(expr, rhs, op)
+            let id = node_assign(expr, rhs, op_tok.lexeme)
+            set_span(id, op_tok.line, op_tok.col)
+            return id
         }
-        return node_expr_stmt(expr)
+        return self.span(node_expr_stmt(expr))
     }
 
     fn parse_var_decl(self) -> int {
@@ -931,19 +1042,19 @@ class Parser {
         if self.matched(self.match_tok([TT_COLON])) { type_ann = self.parse_type() }
         self.expect([TT_ASSIGN])
         let value: int = self.parse_expr()
-        return node_var_decl(name, type_ann, value, is_mut)
+        return self.span(node_var_decl(name, type_ann, value, is_mut))
     }
 
     fn parse_return(self) -> int {
         self.expect([TT_RETURN])
-        if self.check([TT_RBRACE, TT_SEMI, TT_EOF]) { return node_return(-1) }
-        return node_return(self.parse_expr())
+        if self.check([TT_RBRACE, TT_SEMI, TT_EOF]) { return self.span(node_return(-1)) }
+        return self.span(node_return(self.parse_expr()))
     }
 
     fn parse_yield(self) -> int {
         self.expect([TT_YIELD])
         let value: int = self.parse_expr()
-        return node_yield_stmt(value)
+        return self.span(node_yield_stmt(value))
     }
 
     fn parse_if(self) -> int {
@@ -956,10 +1067,10 @@ class Parser {
             self.advance()
             let ec: int = self.parse_expr()
             let eb: List<int> = self.parse_block()
-            push(elifs, node_elif(ec, eb))
+            push(elifs, self.span(node_elif(ec, eb)))
         }
         if self.matched(self.match_tok([TT_ELSE])) { else_body = self.parse_block() }
-        return node_if(cond, then_body, elifs, else_body)
+        return self.span(node_if(cond, then_body, elifs, else_body))
     }
 
     fn parse_for(self) -> int {
@@ -968,14 +1079,14 @@ class Parser {
         self.expect([TT_IN])
         let iterable: int = self.parse_expr()
         let body: List<int> = self.parse_block()
-        return node_for(var_name, iterable, body)
+        return self.span(node_for(var_name, iterable, body))
     }
 
     fn parse_while(self) -> int {
         self.expect([TT_WHILE])
         let cond: int = self.parse_expr()
         let body: List<int> = self.parse_block()
-        return node_while(cond, body)
+        return self.span(node_while(cond, body))
     }
 
     fn parse_match(self) -> int {
@@ -991,19 +1102,19 @@ class Parser {
             var body: List<int> = []
             if self.check([TT_LBRACE]) { body = self.parse_block() }
             else { push(body, self.parse_stmt()) }
-            push(arms, node_arm(pat, body))
+            push(arms, self.span(node_arm(pat, body)))
             self.skip_semis()
         }
         self.expect([TT_RBRACE])
-        return node_match(subject, arms)
+        return self.span(node_match(subject, arms))
     }
 
     fn parse_pattern(self) -> int {
-        if self.check([TT_UNDERSCORE]) { self.advance(); return node_wild() }
+        if self.check([TT_UNDERSCORE]) { self.advance(); return self.span(node_wild()) }
         let expr: int = self.parse_primary()
         if self.matched(self.match_tok([TT_DOTDOT])) {
             let end: int = self.parse_primary()
-            return node_range_lit(expr, end)
+            return self.span(node_range_lit(expr, end))
         }
         return expr
     }
@@ -1013,7 +1124,7 @@ class Parser {
         let expr: int = self.parse_or()
         if self.matched(self.match_tok([TT_DOTDOT])) {
             let end: int = self.parse_or()
-            return node_range_lit(expr, end)
+            return self.span(node_range_lit(expr, end))
         }
         return expr
     }
@@ -1021,9 +1132,10 @@ class Parser {
     fn parse_or(self) -> int {
         var left: int = self.parse_and()
         while self.check([TT_OR]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let right: int = self.parse_and()
-            left = node_bin_op(op, left, right)
+            left = node_bin_op(op_tok.lexeme, left, right)
+            set_span(left, op_tok.line, op_tok.col)
         }
         return left
     }
@@ -1031,9 +1143,10 @@ class Parser {
     fn parse_and(self) -> int {
         var left: int = self.parse_compare()
         while self.check([TT_AND]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let right: int = self.parse_compare()
-            left = node_bin_op(op, left, right)
+            left = node_bin_op(op_tok.lexeme, left, right)
+            set_span(left, op_tok.line, op_tok.col)
         }
         return left
     }
@@ -1041,9 +1154,10 @@ class Parser {
     fn parse_compare(self) -> int {
         var left: int = self.parse_add()
         while self.check([TT_EQ, TT_NEQ, TT_LT, TT_GT, TT_LEQ, TT_GEQ]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let right: int = self.parse_add()
-            left = node_bin_op(op, left, right)
+            left = node_bin_op(op_tok.lexeme, left, right)
+            set_span(left, op_tok.line, op_tok.col)
         }
         return left
     }
@@ -1051,9 +1165,10 @@ class Parser {
     fn parse_add(self) -> int {
         var left: int = self.parse_mul()
         while self.check([TT_PLUS, TT_MINUS]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let right: int = self.parse_mul()
-            left = node_bin_op(op, left, right)
+            left = node_bin_op(op_tok.lexeme, left, right)
+            set_span(left, op_tok.line, op_tok.col)
         }
         return left
     }
@@ -1061,17 +1176,18 @@ class Parser {
     fn parse_mul(self) -> int {
         var left: int = self.parse_unary()
         while self.check([TT_STAR, TT_SLASH, TT_PERCENT]) {
-            let op: str = self.advance().lexeme
+            let op_tok: Token = self.advance()
             let right: int = self.parse_unary()
-            left = node_bin_op(op, left, right)
+            left = node_bin_op(op_tok.lexeme, left, right)
+            set_span(left, op_tok.line, op_tok.col)
         }
         return left
     }
 
     fn parse_unary(self) -> int {
-        if self.check([TT_MINUS]) { self.advance(); return node_unary_op("-", self.parse_unary()) }
-        if self.check([TT_NOT])   { self.advance(); return node_unary_op("!", self.parse_unary()) }
-        if self.check([TT_BANG])  { self.advance(); return node_unary_op("!", self.parse_unary()) }
+        if self.check([TT_MINUS]) { let t = self.advance(); let id = node_unary_op("-", self.parse_unary()); set_span(id, t.line, t.col); return id }
+        if self.check([TT_NOT])   { let t = self.advance(); let id = node_unary_op("!", self.parse_unary()); set_span(id, t.line, t.col); return id }
+        if self.check([TT_BANG])  { let t = self.advance(); let id = node_unary_op("!", self.parse_unary()); set_span(id, t.line, t.col); return id }
         return self.parse_postfix()
     }
 
@@ -1079,7 +1195,7 @@ class Parser {
         var expr: int = self.parse_primary()
         while true {
             if self.check([TT_DOT]) {
-                self.advance()
+                let dot_tok: Token = self.advance()
                 let name: str = self.expect([TT_IDENT]).lexeme
                 // Generic type args on method call: obj.method<Type>(args)
                 if self.check([TT_LT]) {
@@ -1126,11 +1242,13 @@ class Parser {
                     }
                     self.expect([TT_RPAREN])
                     expr = node_method_call(expr, name, args)
+                    set_span(expr, dot_tok.line, dot_tok.col)
                 } else {
                     expr = node_attr(expr, name)
+                    set_span(expr, dot_tok.line, dot_tok.col)
                 }
             } elif self.check([TT_LPAREN]) {
-                self.advance()
+                let lp_tok: Token = self.advance()
                 let args: List<int> = []
                 while not self.check([TT_RPAREN, TT_EOF]) {
                     push(args, self.parse_expr())
@@ -1138,14 +1256,17 @@ class Parser {
                 }
                 self.expect([TT_RPAREN])
                 expr = node_fn_call(expr, args)
+                set_span(expr, lp_tok.line, lp_tok.col)
             } elif self.check([TT_LBRACKET]) {
-                self.advance()
+                let lb_tok: Token = self.advance()
                 let idx: int = self.parse_expr()
                 self.expect([TT_RBRACKET])
                 expr = node_index(expr, idx)
+                set_span(expr, lb_tok.line, lb_tok.col)
             } elif self.check([TT_QUESTION]) {
-                self.advance()
+                let q_tok: Token = self.advance()
                 expr = node_try_op(expr)
+                set_span(expr, q_tok.line, q_tok.col)
             } else { break }
         }
         return expr
@@ -1153,25 +1274,25 @@ class Parser {
 
     fn parse_primary(self) -> int {
         let t = self.peek(0)
-        if t.type_name == TT_INT_LIT   { self.advance(); return node_int_lit(to_int(t.lexeme)) }
-        if t.type_name == TT_FLOAT_LIT { self.advance(); return node_float_lit(to_float(t.lexeme)) }
-        if t.type_name == TT_STR_LIT   { self.advance(); return node_str_lit(t.lexeme) }
-        if t.type_name == TT_TRUE      { self.advance(); return node_bool_lit(true) }
-        if t.type_name == TT_FALSE     { self.advance(); return node_bool_lit(false) }
-        if t.type_name == TT_NONE_KW   { self.advance(); return node_none_lit() }
+        if t.type_name == TT_INT_LIT   { self.advance(); return self.span(node_int_lit(to_int(t.lexeme))) }
+        if t.type_name == TT_FLOAT_LIT { self.advance(); return self.span(node_float_lit(to_float(t.lexeme))) }
+        if t.type_name == TT_STR_LIT   { self.advance(); return self.span(node_str_lit(t.lexeme)) }
+        if t.type_name == TT_TRUE      { self.advance(); return self.span(node_bool_lit(true)) }
+        if t.type_name == TT_FALSE     { self.advance(); return self.span(node_bool_lit(false)) }
+        if t.type_name == TT_NONE_KW   { self.advance(); return self.span(node_none_lit()) }
         if t.type_name == TT_SOME_KW {
             self.advance(); self.expect([TT_LPAREN])
             let v: int = self.parse_expr(); self.expect([TT_RPAREN])
-            return node_some_lit(v)
+            return self.span(node_some_lit(v))
         }
-        if t.type_name == TT_UNDERSCORE { self.advance(); return node_wild() }
+        if t.type_name == TT_UNDERSCORE { self.advance(); return self.span(node_wild()) }
         if t.type_name == TT_LBRACKET {
             self.advance(); let elems: List<int> = []
             while not self.check([TT_RBRACKET, TT_EOF]) {
                 push(elems, self.parse_expr())
                 if not self.matched(self.match_tok([TT_COMMA])) { break }
             }
-            self.expect([TT_RBRACKET]); return node_list_lit(elems)
+            self.expect([TT_RBRACKET]); return self.span(node_list_lit(elems))
         }
         if t.type_name == TT_LPAREN {
             self.advance(); let expr: int = self.parse_expr()
@@ -1180,7 +1301,7 @@ class Parser {
 
         // Identifier or struct literal
         if t.type_name == TT_IDENT {
-            let name: str = self.advance().lexeme
+            let name_tok: Token = self.advance()
             // Generic type arguments on calls/constructors: Ident<Type, ...>
             if self.check([TT_LT]) {
                 let saved = self.pos; self.advance()
@@ -1206,7 +1327,7 @@ class Parser {
                         if not self.matched(self.match_tok([TT_COMMA])) { break }
                     }
                     self.expect([TT_GT])
-                    var full_name: str = name + "<" + args[0]
+                    var full_name: str = name_tok.lexeme + "<" + args[0]
                     var i = 1
                     while i < len(args) {
                         full_name = full_name + ", " + args[i]
@@ -1221,15 +1342,15 @@ class Parser {
                                 let fn_name: str = self.expect([TT_IDENT]).lexeme
                                 self.expect([TT_COLON])
                                 let fv: int = self.parse_expr()
-                                push(flds, node_field(fn_name, fv))
+                                push(flds, self.span(node_field(fn_name, fv)))
                                 if not self.matched(self.match_tok([TT_COMMA])) { break }
                             }
                             self.expect([TT_RBRACE])
-                            return node_struct_lit(full_name, flds)
+                            return self.span(node_struct_lit(full_name, flds))
                         }
                         self.pos = saved2
                     }
-                    return node_ident(full_name)
+                    return self.span(node_ident(full_name))
                 }
                 self.pos = saved
             }
@@ -1241,23 +1362,23 @@ class Parser {
                         let fn_name: str = self.expect([TT_IDENT]).lexeme
                         self.expect([TT_COLON])
                         let fv: int = self.parse_expr()
-                        push(flds, node_field(fn_name, fv))
+                        push(flds, self.span(node_field(fn_name, fv)))
                         if not self.matched(self.match_tok([TT_COMMA])) { break }
                     }
                     self.expect([TT_RBRACE])
-                    return node_struct_lit(name, flds)
+                    return self.span(node_struct_lit(name_tok.lexeme, flds))
                 } else {
                     self.pos = saved
                 }
             }
-            return node_ident(name)
+            return self.span(node_ident(name_tok.lexeme))
         }
 
         // Allow type keywords as identifiers
         if t.type_name == TT_T_INT or t.type_name == TT_T_FLOAT or
            t.type_name == TT_T_BOOL or t.type_name == TT_T_STR or
            t.type_name == TT_T_VOID {
-            self.advance(); return node_ident(t.lexeme)
+            self.advance(); return self.span(node_ident(t.lexeme))
         }
 
         report_error(self.src, t.line, t.col, "Unexpected token " + t.type_name + " in expression")
@@ -1277,12 +1398,12 @@ fn split_args(s: str) -> List<str> {
         if c == "<" { depth = depth + 1 }
         elif c == ">" { depth = depth - 1 }
         if c == "," and depth == 0 {
-            push(result, cur)
+            push(result, str_trim(cur))
             cur = ""
         } else { cur = cur + c }
         i = i + 1
     }
-    if cur != "" { push(result, cur) }
+    if cur != "" { push(result, str_trim(cur)) }
     return result
 }
 
@@ -1292,7 +1413,7 @@ fn map_type(t: str) -> str {
     if t == "bool"  { return "bool" }
     if t == "str"   { return "std::string" }
     if t == "void"  { return "void" }
-    if t == "Option" or t == "List" or t == "Map" or t == "Result" { return t }
+    if t == "Option" or t == "List" or t == "Map" or t == "Set" or t == "Result" { return t }
     var i = 0
     while i < len(t) {
         if str_get(t, i) == "<" {
@@ -1893,7 +2014,7 @@ class CodeGen {
         var pi = 0
         while pi < len(fn_node.params) {
             let p = node_pool[fn_node.params[pi]]
-            self.w(map_type(p.return_type) + " " + p.name + ";")
+            self.w(map_type(p.type_ann) + " " + p.name + ";")
             pi = pi + 1
         }
         var vi = 0
@@ -1917,7 +2038,7 @@ class CodeGen {
         while pi3 < len(fn_node.params) {
             let p = node_pool[fn_node.params[pi3]]
             if pi3 > 0 { cons_params = cons_params + ", "; init_list = init_list + ", " }
-            cons_params = cons_params + map_type(p.return_type) + " " + p.name
+            cons_params = cons_params + map_type(p.type_ann) + " " + p.name
             init_list = init_list + p.name + "(" + p.name + ")"
             pi3 = pi3 + 1
         }
@@ -1953,7 +2074,7 @@ class CodeGen {
         while pi < len(fn_node.params) {
             let p = node_pool[fn_node.params[pi]]
             if pi > 0 { params = params + ", "; args = args + ", " }
-            params = params + map_type(p.return_type) + " " + p.name
+            params = params + map_type(p.type_ann) + " " + p.name
             args = args + p.name
             pi = pi + 1
         }
@@ -2008,7 +2129,7 @@ class CodeGen {
         while i < len(node.params) {
             if i > 0 { ps = ps + ", " }
             let p = node_pool[node.params[i]]
-            ps = ps + map_type(p.return_type) + " " + p.name
+            ps = ps + map_type(p.type_ann) + " " + p.name
             i = i + 1
         }
         if node.name == "main" {
@@ -2051,7 +2172,7 @@ class CodeGen {
         var i = 0
         while i < len(node.fields) {
             let f = node_pool[node.fields[i]]
-            self.w(map_type(f.return_type) + " " + f.name + ";")
+            self.w(map_type(f.type_ann) + " " + f.name + ";")
             i = i + 1
         }
         if len(node.fields) > 0 and len(node.methods) > 0 { self.w("") }
@@ -2072,7 +2193,7 @@ class CodeGen {
         while i < len(node.params) {
             if i > 0 { ps = ps + ", " }
             let p = node_pool[node.params[i]]
-            ps = ps + map_type(p.return_type) + " " + p.name
+            ps = ps + map_type(p.type_ann) + " " + p.name
             i = i + 1
         }
         self.w(map_type(node.return_type) + " " + node.name + "(" + ps + ") {")
@@ -2119,12 +2240,14 @@ class CodeGen {
             self.w("#include <vector>")
             self.w("#include <optional>")
             self.w("#include <unordered_map>")
+            self.w("#include <unordered_set>")
             self.w("#include <functional>")
             self.w("#include <algorithm>")
             self.w("#include <cmath>")
             self.w("#include <stdexcept>")
             self.w("#include <sstream>")
             self.w("#include <fstream>")
+            self.w("#include <random>")
             self.w("#include <cstdlib>")
             self.w("#include <cctype>")
             self.w("#include <filesystem>")
@@ -2158,6 +2281,7 @@ class CodeGen {
             self.w("// ── Oxybelis stdlib types ───")
             self.w("template<typename T> using List = std::vector<T>;")
             self.w("template<typename K,typename V> using Map = std::unordered_map<K,V>;")
+            self.w("template<typename T> using Set = std::unordered_set<T>;")
             self.w("template<typename T> using Option = std::optional<T>;")
             self.w("")
             self.w("template<typename T> Option<T> Some(T val) { return std::optional<T>(val); }")
@@ -2229,6 +2353,12 @@ class CodeGen {
             self.w("inline std::string str(const std::string& v){ return v; }")
             self.w("inline std::string str(const char* v){ return std::string(v); }")
             self.w("inline std::string str(int v) { return std::to_string(v); }")
+            self.w("inline std::string str(unsigned int v) { return std::to_string(v); }")
+            self.w("inline std::string str(long v) { return std::to_string(v); }")
+            self.w("inline std::string str(unsigned long v) { return std::to_string(v); }")
+            self.w("inline std::string str(long long v) { return std::to_string(v); }")
+            self.w("inline std::string str(unsigned long long v) { return std::to_string(v); }")
+            self.w("inline std::string str(float v) { return std::to_string(v); }")
             self.w("inline std::string str(double v) { return std::to_string(v); }")
             self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
             self.w("template<typename T> std::string str(const std::optional<T>& v){")
@@ -2272,6 +2402,7 @@ class CodeGen {
             self.w("// ── collections ───")
             self.w("template<typename T> size_t len(const std::vector<T>& v){return v.size();}")
             self.w("inline size_t len(const std::string& s){return s.size();}")
+            self.w("template<typename T> size_t len(const std::unordered_set<T>& s){return s.size();}")
             self.w("template<typename T> void push(std::vector<T>& v,const T& x){v.push_back(x);}")
             self.w("template<typename T> T pop(std::vector<T>& v){T x=v.back();v.pop_back();return x;}")
             self.w("template<typename T> bool contains(const std::vector<T>& v, const T& x){")
@@ -2279,6 +2410,15 @@ class CodeGen {
             self.w("return std::find(v.begin(),v.end(),x)!=v.end();")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("template<typename T> bool contains(const std::unordered_set<T>& s, const T& x){return s.find(x) != s.end();}")
+            self.w("")
+            self.w("template<typename K, typename V> bool map_contains(const std::unordered_map<K,V>& m, const K& k){ return m.count(k) > 0; }")
+            self.w("template<typename K, typename V> V map_get(const std::unordered_map<K,V>& m, const K& k){ return m.at(k); }")
+            self.w("template<typename K, typename V> void map_set(std::unordered_map<K,V>& m, const K& k, const V& v){ m[k] = v; }")
+            self.w("template<typename T> void list_insert(std::vector<T>& v, int i, const T& x){ v.insert(v.begin() + i, x); }")
+            self.w("template<typename T> T list_remove(std::vector<T>& v, int i){ T x = v[i]; v.erase(v.begin() + i); return x; }")
+            self.w("template<typename T> std::string str(const std::unordered_set<T>& s){ std::string r=\"{\"; bool first=true; for(const auto &x: s){ if(!first) r+=\", \"; first=false; r+=str(x);} return r+\"}\"; }")
+            self.w("template<typename T> void print(const std::unordered_set<T>& s){ std::cout<<str(s)<<"\\n"; }")
             self.w("")
             self.w("// ── functional chaining (List<T>) ───")
             self.w("template<typename T,typename U> std::vector<U> _ox_map(const std::vector<T>& v,U(*fn)(T)){")
@@ -2326,12 +2466,18 @@ class CodeGen {
             self.w("T m=v[0]; for(const auto& x:v) if(x<m) m=x; return m;")
             self.depth = self.depth - 1
             self.w("}")
-            self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
+self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
             self.depth = self.depth + 1
             self.w("T m=v[0]; for(const auto& x:v) if(m<x) m=x; return m;")
             self.depth = self.depth - 1
             self.w("}")
-            self.w("")
+            self.w("template<typename T> std::vector<T> _ox_sorted(const std::vector<T>& v, bool reverse = false){")
+            self.depth = self.depth + 1
+            self.w("std::vector<T> r(v);")
+            self.w("if (!reverse) std::sort(r.begin(), r.end());")
+            self.w("else std::sort(r.begin(), r.end(), std::greater<T>());")
+            self.w("return r;")
+            self.depth = self.depth - 1
             self.w("// ── itertools (List<T>) ───")
             self.w("template<typename T> std::vector<std::vector<T>> _ox_combinations(const std::vector<T>& v,int k){")
             self.depth = self.depth + 1
@@ -2633,6 +2779,51 @@ class CodeGen {
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline int exec(const std::string& cmd) { return std::system(cmd.c_str()); }")
+            self.w("inline void panic(const std::string& msg) {")
+            self.depth = self.depth + 1
+            self.w("std::cerr << msg << std::endl; std::abort();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline void ox_assert(bool cond) {")
+            self.depth = self.depth + 1
+            self.w("if (!cond) { std::cerr << \"Assertion failed\" << std::endl; std::abort(); }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string read_line() {")
+            self.depth = self.depth + 1
+            self.w("std::string line; std::getline(std::cin, line); return line;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline void eprint(const std::string& msg) { std::cerr << msg; }")
+            self.w("// ── str_format ──")
+            self.w("inline std::string str_format(const std::string& fmt, const std::vector<std::string>& args) {")
+            self.depth = self.depth + 1
+            self.w("std::string r; size_t ai = 0;")
+            self.w("for (size_t i = 0; i < fmt.size(); i++) {")
+            self.depth = self.depth + 1
+            self.w("if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') {")
+            self.depth = self.depth + 1
+            self.w("r += (ai < args.size()) ? args[ai++] : std::string(); ++i;")
+            self.depth = self.depth - 1
+            self.w("} else { r += fmt[i]; }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("// ── random ───")
+            self.w("static std::mt19937 _ox_rng(std::random_device{}());")
+            self.w("inline int _ox_randint(int min, int max) {")
+            self.depth = self.depth + 1
+            self.w("std::uniform_int_distribution<int> dist(min, max); return dist(_ox_rng);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline double _ox_randfloat() {")
+            self.depth = self.depth + 1
+            self.w("std::uniform_real_distribution<double> dist(0.0, 1.0); return dist(_ox_rng);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline void _ox_randseed(unsigned int seed) { _ox_rng.seed(seed); }")
             self.w("")
             self.w("// ── filesystem ───")
             self.w("inline bool fs_exists(const std::string& path) { return std::filesystem::exists(path); }")
@@ -2862,6 +3053,34 @@ class CodeGen {
             // Emit Node's full definition early so List<Node> globals are valid (libc++ fix)
             self.gen_class(node_class_id)
         }
+        // Forward-declare free functions for C++ single-pass compilation
+        i = 0
+        while i < len(prog.stmts) {
+            let n = node_pool[prog.stmts[i]]
+            if n.kind == "FnDef" and n.name != "main" {
+                if len(n.generics) > 0 {
+                    var tmpl: str = "template<"
+                    var ti = 0
+                    while ti < len(n.generics) {
+                        if ti > 0 { tmpl = tmpl + ", " }
+                        tmpl = tmpl + "typename " + node_pool[n.generics[ti]].str_val
+                        ti = ti + 1
+                    }
+                    tmpl = tmpl + ">"
+                    self.w(tmpl)
+                }
+                var ps: str = ""
+                var pi = 0
+                while pi < len(n.params) {
+                    if pi > 0 { ps = ps + ", " }
+                    let p = node_pool[n.params[pi]]
+                    ps = ps + map_type(p.type_ann) + " " + p.name
+                    pi = pi + 1
+                }
+                self.w(map_type(n.return_type) + " " + n.name + "(" + ps + ");")
+            }
+            i = i + 1
+        }
         // Check if any (other) class defs exist
         var has_class = false; i = 0
         while i < len(prog.stmts) {
@@ -2896,12 +3115,821 @@ class CodeGen {
     }
 }
 
+// ── TypeChecker ─────────────────────────────────────────────
+class Binding {
+    name: str
+    ty: str
+}
+
+fn substitute_type_params(t: str, bindings: List<Binding>) -> str {
+    var bi = 0
+    while bi < len(bindings) {
+        if bindings[bi].name == t { return bindings[bi].ty }
+        bi = bi + 1
+    }
+    var i = 0
+    while i < len(t) {
+        if str_get(t, i) == "<" {
+            let outer: str = str_sub(t, 0, i)
+            let inner_start = i + 1
+            let inner_end = len(t) - 1
+            let args: List<str> = split_args(str_sub(t, inner_start, inner_end))
+            var substituted: str = outer + "<"
+            var j = 0
+            while j < len(args) {
+                if j > 0 { substituted = substituted + ", " }
+                substituted = substituted + substitute_type_params(args[j], bindings)
+                j = j + 1
+            }
+            return substituted + ">"
+        }
+        i = i + 1
+    }
+    return t
+}
+
+class TypeChecker {
+    src: str
+    source_path: str
+    diags: List<Diagnostic>
+    scopes: List<List<Binding>>
+    // Function registry
+    fn_names: List<str>
+    fn_param_types: List<List<str>>
+    fn_rets: List<str>
+    fn_nodes: List<int>
+    // Class registry
+    cls_names: List<str>
+    cls_field_names: List<List<str>>
+    cls_field_types: List<List<str>>
+    // Context
+    in_fn_ret: str
+    in_class: str
+    generic_params: List<str>
+    type_bindings: List<Binding>
+
+    fn _bi(self, name: str, param_types: List<str>, ret: str) -> void {
+        push(self.fn_names, name)
+        push(self.fn_param_types, param_types)
+        push(self.fn_rets, ret)
+        push(self.fn_nodes, -1)
+    }
+
+    fn init_builtins(self) -> void {
+        self._bi("print", [], "void")
+        self._bi("len",     ["void"], "int")
+        self._bi("push",    ["void", "void"], "void")
+        self._bi("pop",     ["void"], "void")
+        self._bi( "range",   ["int", "int"], "List<int>")
+        self._bi( "str",     ["void"], "str")
+        self._bi( "int",     ["void"], "int")
+        self._bi( "float",   ["void"], "float")
+        self._bi( "bool",    ["void"], "bool")
+        self._bi( "sqrt",    ["float"], "float")
+        self._bi( "abs",     ["float"], "float")
+        self._bi( "pow",     ["float", "float"], "float")
+        self._bi( "sin",     ["float"], "float")
+        self._bi( "cos",     ["float"], "float")
+        self._bi( "tan",     ["float"], "float")
+        self._bi( "floor",   ["float"], "float")
+        self._bi( "ceil",    ["float"], "float")
+        self._bi( "round",   ["float"], "float")
+        self._bi( "log",     ["float"], "float")
+        self._bi( "exp",     ["float"], "float")
+        self._bi( "min",     ["int", "int"], "int")
+        self._bi( "max",     ["int", "int"], "int")
+        self._bi( "contains",["void", "void"], "bool")
+        self._bi( "read_file",   ["str"], "str")
+        self._bi( "read_lines",  ["str"], "List<str>")
+        self._bi( "write_file",  ["str", "str"], "void")
+        self._bi( "exec",    ["str"], "int")
+        self._bi( "exit",    ["int"], "void")
+        self._bi( "to_int",  ["str"], "int")
+        self._bi( "to_float",["str"], "float")
+        self._bi( "str_get", ["str", "int"], "str")
+        self._bi( "str_sub", ["str", "int", "int"], "str")
+        self._bi( "str_contains", ["str", "str"], "bool")
+        self._bi( "args",    [], "List<str>")
+        self._bi( "is_digit", ["str"], "bool")
+        self._bi( "is_alpha", ["str"], "bool")
+        self._bi( "is_alnum", ["str"], "bool")
+        self._bi( "str_split",   ["str", "str"], "List<str>")
+        self._bi( "str_trim",    ["str"], "str")
+        self._bi( "str_trim_start", ["str"], "str")
+        self._bi( "str_trim_end",   ["str"], "str")
+        self._bi( "str_replace",    ["str", "str", "str"], "str")
+        self._bi( "str_replace_all", ["str", "str", "str"], "str")
+        self._bi( "str_join",  ["List<str>", "str"], "str")
+        self._bi( "to_upper",  ["str"], "str")
+        self._bi( "to_lower",  ["str"], "str")
+        self._bi( "starts_with", ["str", "str"], "bool")
+        self._bi( "ends_with",   ["str", "str"], "bool")
+        self._bi( "str_repeat",  ["str", "int"], "str")
+        self._bi( "str_reverse", ["str"], "str")
+        self._bi( "str_find",    ["str", "str"], "Option<int>")
+        self._bi( "map_contains", ["void", "void"], "bool")
+        self._bi( "map_get",  ["void", "void"], "void")
+        self._bi( "map_set",  ["void", "void", "void"], "void")
+        self._bi( "set_contains", ["void", "void"], "bool")
+        self._bi( "set_add",  ["void", "void"], "void")
+        self._bi( "set_remove",  ["void", "void"], "void")
+        self._bi( "set_union", ["void", "void"], "void")
+        self._bi( "set_intersection", ["void", "void"], "void")
+        self._bi( "set_difference", ["void", "void"], "void")
+        self._bi( "set_symdiff", ["void", "void"], "void")
+        self._bi( "set_is_subset", ["void", "void"], "bool")
+        self._bi( "set_is_superset", ["void", "void"], "bool")
+        self._bi( "list_insert", ["void", "int", "void"], "void")
+        self._bi( "list_remove", ["void", "int"], "void")
+        self._bi( "fs_exists",  ["str"], "bool")
+        self._bi( "fs_is_file", ["str"], "bool")
+        self._bi( "fs_is_dir",  ["str"], "bool")
+        self._bi( "fs_mkdir",   ["str"], "void")
+        self._bi( "fs_list_dir", ["str"], "List<str>")
+        self._bi( "fs_remove",  ["str"], "void")
+        self._bi( "fs_rename",  ["str", "str"], "void")
+        self._bi( "fs_copy",    ["str", "str"], "void")
+        self._bi( "fs_cwd",     [], "str")
+        self._bi( "panic",      ["str"], "void")
+        self._bi( "ox_assert",  ["bool"], "void")
+        self._bi( "read_line",  [], "str")
+        self._bi( "eprint",     ["str"], "void")
+        self._bi( "str_format", ["str", "List<str>"], "str")
+        self._bi( "_ox_randint",  ["int", "int"], "int")
+        self._bi( "_ox_randfloat", [], "float")
+        self._bi( "_ox_randseed",  ["int"], "void")
+    }
+
+    fn push_scope(self) -> void {
+        push(self.scopes, [])
+    }
+
+    fn pop_scope(self) -> void {
+        pop(self.scopes)
+    }
+
+    fn declare_var(self, name: str, ty: str) -> void {
+        let si = len(self.scopes) - 1
+        var exists = false
+        var i = 0
+        while i < len(self.scopes[si]) {
+            if self.scopes[si][i].name == name { exists = true; break }
+            i = i + 1
+        }
+        if exists {
+            push(self.diags, make_diag(OX_SEVERITY_ERROR,
+                "variable `" + name + "` already declared in this scope", "E0002", 0, 0))
+            return
+        }
+        push(self.scopes[si], Binding { name: name, ty: ty })
+    }
+
+    fn lookup_var(self, name: str) -> str {
+        var si = len(self.scopes)
+        while si > 0 {
+            si = si - 1
+            let scope = self.scopes[si]
+            var i = 0
+            while i < len(scope) {
+                if scope[i].name == name { return scope[i].ty }
+                i = i + 1
+            }
+        }
+        return ""
+    }
+
+    fn find_fn(self, name: str) -> int {
+        var i = 0
+        while i < len(self.fn_names) {
+            if self.fn_names[i] == name { return i }
+            i = i + 1
+        }
+        return -1
+    }
+
+    fn find_fn_all(self, name: str) -> List<int> {
+        let result: List<int> = []
+        var i = 0
+        while i < len(self.fn_names) {
+            if self.fn_names[i] == name { push(result, i) }
+            i = i + 1
+        }
+        return result
+    }
+
+    fn resolve_fn_call(self, name: str, arg_types: List<str>) -> int {
+        let candidates = self.find_fn_all(name)
+        if len(candidates) == 0 { return -1 }
+        if len(candidates) == 1 { return candidates[0] }
+        // Multiple candidates: filter by arity first
+        var arity_match: List<int> = []
+        var ci = 0
+        while ci < len(candidates) {
+            if len(self.fn_param_types[candidates[ci]]) == len(arg_types) {
+                push(arity_match, candidates[ci])
+            }
+            ci = ci + 1
+        }
+        if len(arity_match) == 0 {
+            return candidates[0]  // for error reporting
+        }
+        if len(arity_match) == 1 {
+            return arity_match[0]
+        }
+        // Multiple arity matches: score by param type compatibility
+        var best_idx = arity_match[0]
+        var best_score = -1
+        ci = 0
+        while ci < len(arity_match) {
+            let fi = arity_match[ci]
+            let pts = self.fn_param_types[fi]
+            var score = 0
+            var pi = 0
+            while pi < len(pts) {
+                if pts[pi] == arg_types[pi] { score = score + 2 }
+                elif self.is_compatible(arg_types[pi], pts[pi]) { score = score + 1 }
+                pi = pi + 1
+            }
+            if score > best_score { best_score = score; best_idx = fi }
+            ci = ci + 1
+        }
+        return best_idx
+    }
+
+    fn find_cls(self, name: str) -> int {
+        var i = 0
+        while i < len(self.cls_names) {
+            if self.cls_names[i] == name { return i }
+            i = i + 1
+        }
+        return -1
+    }
+
+    fn infer_type_bindings(self, expected: str, found: str) -> void {
+        if self.is_generic(expected) {
+            var bi = 0
+            while bi < len(self.type_bindings) {
+                if self.type_bindings[bi].name == expected {
+                    if self.type_bindings[bi].ty != found {
+                        self.err("type mismatch for `" + expected + "`: inferred `" +
+                            self.type_bindings[bi].ty + "` and `" + found + "`", 0, "E0308")
+                    }
+                    return
+                }
+                bi = bi + 1
+            }
+            push(self.type_bindings, Binding { name: expected, ty: found })
+            return
+        }
+        if base_type(expected) == base_type(found) {
+            let e_params = type_params(expected)
+            let f_params = type_params(found)
+            if len(e_params) > 0 and len(e_params) == len(f_params) {
+                var i = 0
+                while i < len(e_params) {
+                    self.infer_type_bindings(e_params[i], f_params[i])
+                    i = i + 1
+                }
+            }
+        }
+    }
+
+    fn is_generic(self, name: str) -> bool {
+        var i = 0
+        while i < len(self.generic_params) {
+            if self.generic_params[i] == name { return true }
+            i = i + 1
+        }
+        return false
+    }
+
+    // ── Main check entry ──
+    fn check(self, prog_id: int) -> void {
+        self.init_builtins()
+        self.push_scope()  // global scope
+
+        let prog = node_pool[prog_id]
+        // First pass: collect function and class signatures
+        var si = 0
+        while si < len(prog.stmts) {
+            let s = node_pool[prog.stmts[si]]
+            if s.kind == "FnDef" {
+                var pt_types: List<str> = []
+                var pi = 0
+                while pi < len(s.params) {
+                    push(pt_types, node_pool[s.params[pi]].type_ann)
+                    pi = pi + 1
+                }
+                push(self.fn_names, s.name)
+                push(self.fn_param_types, pt_types)
+                push(self.fn_rets, s.return_type)
+                push(self.fn_nodes, prog.stmts[si])
+            }
+            if s.kind == "ClassDef" {
+                push(self.cls_names, s.name)
+                var fns: List<str> = []
+                var fts: List<str> = []
+                var fi = 0
+                while fi < len(s.fields) {
+                    let f = node_pool[s.fields[fi]]
+                    push(fns, f.name)
+                    push(fts, f.type_ann)
+                    fi = fi + 1
+                }
+                var mi = 0
+                while mi < len(s.methods) {
+                    let m = node_pool[s.methods[mi]]
+                    push(fns, m.name)
+                    push(fts, m.return_type)
+                    mi = mi + 1
+                }
+                push(self.cls_field_names, fns)
+                push(self.cls_field_types, fts)
+            }
+            si = si + 1
+        }
+
+        // Second pass: check top-level statements
+        si = 0
+        while si < len(prog.stmts) {
+            self.check_stmt(prog.stmts[si])
+            si = si + 1
+        }
+    }
+
+    // ── Type inference ──
+    fn infer_type(self, node_id: int) -> str {
+        let t = self.infer_type_impl(node_id)
+        node_pool[node_id].node_type = t
+        return t
+    }
+
+    fn infer_type_impl(self, node_id: int) -> str {
+        let node = node_pool[node_id]
+        if node.kind == "IntLit"    { return "int" }
+        if node.kind == "FloatLit"  { return "float" }
+        if node.kind == "StrLit"    { return "str" }
+        if node.kind == "BoolLit"   { return "bool" }
+        if node.kind == "NoneLit"   { return "Option<void>" }
+        if node.kind == "WildCard"  { return "_" }
+        if node.kind == "SomeLit" {
+            let inner = self.infer_type(node.inner)
+            return "Option<" + inner + ">"
+        }
+        if node.kind == "ListLit" {
+            var et: str = "void"
+            if len(node.elems) > 0 { et = self.infer_type(node.elems[0]) }
+            var i = 1
+            while i < len(node.elems) {
+                self.infer_type(node.elems[i])
+                i = i + 1
+            }
+            return "List<" + et + ">"
+        }
+        if node.kind == "Ident" {
+            if node.name == "true" or node.name == "false" { return "bool" }
+            if node.name == "self" {
+                if self.in_class != "" { return self.in_class }
+                self.err("`self` is only valid inside class methods", node_id, "E0401")
+                return "void"
+            }
+            let ty = self.lookup_var(node.name)
+            if ty != "" { return ty }
+            if self.find_fn(node.name) >= 0 { return "fn" }
+            if self.find_cls(node.name) >= 0 { return "type" }
+            self.err("cannot find value `" + node.name + "` in this scope", node_id, "E0425")
+            return "void"
+        }
+        if node.kind == "BinOp" {
+            let lt = self.infer_type(node.left)
+            let rt = self.infer_type(node.right)
+            if node.op == "==" or node.op == "!=" { return "bool" }
+            if node.op == "<" or node.op == ">" or node.op == "<=" or node.op == ">=" {
+                if (lt == "int" or lt == "float") and (rt == "int" or rt == "float") { return "bool" }
+                self.type_err("int|float", rt, node.right)
+                return "bool"
+            }
+            if node.op == "and" or node.op == "or" {
+                if lt == "bool" and rt == "bool" { return "bool" }
+                self.type_err("bool", lt, node.left)
+                return "bool"
+            }
+            if node.op == "+" or node.op == "-" or node.op == "*" or node.op == "/" or node.op == "%" {
+                if (lt == "int" or lt == "float") and (rt == "int" or rt == "float") {
+                    if lt == rt { return lt }
+                    return "float"
+                }
+                if lt == "str" and node.op == "+" { return "str" }
+                self.type_err("int|float|str", lt + " " + node.op + " " + rt, node_id)
+                return lt
+            }
+            return "void"
+        }
+        if node.kind == "UnaryOp" {
+            let ot = self.infer_type(node.operand)
+            if node.op == "-" or node.op == "!" {
+                if ot == "int" or ot == "float" or ot == "bool" { return ot }
+                self.type_err("int|float|bool", ot, node.operand)
+            }
+            return ot
+        }
+        if node.kind == "FnCall" {
+            let fn_expr = node_pool[node.func]
+            if fn_expr.kind == "Ident" and fn_expr.name == "Ok" {
+                if len(node.args) > 0 {
+                    let inner = self.infer_type(node.args[0])
+                    return "Result<" + inner + ", void>"
+                }
+                return "Result<void, void>"
+            }
+            if fn_expr.kind == "Ident" and fn_expr.name == "Err" {
+                if len(node.args) > 0 {
+                    let inner = self.infer_type(node.args[0])
+                    return "Result<void, " + inner + ">"
+                }
+                return "Result<void, void>"
+            }
+            if fn_expr.kind == "Ident" {
+                let fn_name = fn_expr.name
+                // Phase 1: Infer arg types independently (before generic context)
+                var arg_types: List<str> = []
+                var ai = 0
+                while ai < len(node.args) {
+                    push(arg_types, self.infer_type(node.args[ai]))
+                    ai = ai + 1
+                }
+                // Phase 2: Resolve best overload match
+                let fi = self.resolve_fn_call(fn_name, arg_types)
+                if fi >= 0 {
+                    let pts = self.fn_param_types[fi]
+                    let ret = self.fn_rets[fi]
+                    // Phase 3: Set up callee's generic params for binding inference
+                    let fn_node_id = self.fn_nodes[fi]
+                    let old_generic = self.generic_params
+                    if fn_node_id >= 0 {
+                        let fn_node = node_pool[fn_node_id]
+                        var gp: List<str> = []
+                        var gi = 0
+                        while gi < len(fn_node.generics) {
+                            push(gp, node_pool[fn_node.generics[gi]].str_val)
+                            gi = gi + 1
+                        }
+                        self.generic_params = gp
+                    }
+                    // Phase 4: Check arg compatibility (print is variadic)
+                    if fn_name == "print" {
+                        self.generic_params = old_generic
+                        return "void"
+                    }
+                    var expected = len(pts)
+                    if len(node.args) != expected {
+                        self.err("function `" + fn_name + "` takes " + str(expected) +
+                            " arguments but " + str(len(node.args)) + " were given",
+                            node_id, "E0060")
+                        self.generic_params = old_generic
+                        return ret
+                    }
+                    ai = 0
+                    while ai < len(node.args) {
+                        let ptype = pts[ai]
+                        if ptype != "void" and not self.is_compatible(arg_types[ai], ptype) {
+                            self.type_err(ptype, arg_types[ai], node.args[ai])
+                        }
+                        ai = ai + 1
+                    }
+                    // Phase 5: Build type bindings for generic inference
+                    self.type_bindings = []
+                    ai = 0
+                    while ai < len(node.args) {
+                        let ptype = pts[ai]
+                        if ptype != "void" {
+                            self.infer_type_bindings(ptype, arg_types[ai])
+                        }
+                        ai = ai + 1
+                    }
+                    let concrete_ret = ret
+                    if len(self.type_bindings) > 0 {
+                        concrete_ret = substitute_type_params(ret, self.type_bindings)
+                    }
+                    self.generic_params = old_generic
+                    return concrete_ret
+                }
+            }
+            // Fallback: generic call or method on type
+            var ai = 0
+            while ai < len(node.args) { self.infer_type(node.args[ai]); ai = ai + 1 }
+            self.infer_type(node.func)
+            return "void"
+        }
+        if node.kind == "MethodCall" {
+            let obj_t = self.infer_type(node.obj)
+            var ai = 0
+            while ai < len(node.args) { self.infer_type(node.args[ai]); ai = ai + 1 }
+            let base = base_type(obj_t)
+            // Try class methods
+            let ci = self.find_cls(base)
+            if ci >= 0 {
+                var mi = 0
+                while mi < len(self.cls_field_names[ci]) {
+                    if self.cls_field_names[ci][mi] == node.name {
+                        return self.cls_field_types[ci][mi]
+                    }
+                    mi = mi + 1
+                }
+            }
+            // Built-in list chaining methods
+            if base == "List" {
+                let params = type_params(obj_t)
+                var elem_type: str = "void"
+                if len(params) > 0 { elem_type = params[0] }
+                if node.name == "map" {
+                    // Try to infer return type from the passed function
+                    if len(node.args) > 0 and node_pool[node.args[0]].kind == "Ident" {
+                        let fn_name = node_pool[node.args[0]].name
+                        let fi2 = self.find_fn(fn_name)
+                        if fi2 >= 0 { return "List<" + self.fn_rets[fi2] + ">" }
+                    }
+                    return "List<" + elem_type + ">"
+                }
+                if node.name == "filter" or node.name == "take_while" or node.name == "drop_while" {
+                    return "List<" + elem_type + ">"
+                }
+                if node.name == "reduce" {
+                    if len(node.args) > 0 { return self.infer_type(node.args[0]) }
+                    return elem_type
+                }
+                if node.name == "for_each" or node.name == "each" { return "void" }
+                if node.name == "any" or node.name == "all" { return "bool" }
+                if node.name == "find" { return "Option<" + elem_type + ">" }
+                if node.name == "sum" or node.name == "min" or node.name == "max" { return elem_type }
+                if node.name == "reversed" or node.name == "cycle" { return "List<" + elem_type + ">" }
+                if node.name == "combinations" or node.name == "permutations" or
+                   node.name == "chunked" or node.name == "windowed" or node.name == "pairwise" {
+                    return "List<List<" + elem_type + ">>"
+                }
+            }
+            return "void"
+        }
+        if node.kind == "Attr" {
+            let obj_t = self.infer_type(node.obj)
+            let base = base_type(obj_t)
+            let ci = self.find_cls(base)
+            if ci >= 0 {
+                var fi = 0
+                while fi < len(self.cls_field_names[ci]) {
+                    if self.cls_field_names[ci][fi] == node.name {
+                        return self.cls_field_types[ci][fi]
+                    }
+                    fi = fi + 1
+                }
+                // Check methods
+                // methods were not stored; skip for now
+            }
+            if base == "Option" and node.name == "value" {
+                let params = type_params(obj_t)
+                if len(params) > 0 { return params[0] }
+                return "void"
+            }
+            return "void"
+        }
+        if node.kind == "Index" {
+            let obj_t = self.infer_type(node.obj)
+            self.infer_type(node.start)
+            let base = base_type(obj_t)
+            if base == "List" {
+                let params = type_params(obj_t)
+                if len(params) > 0 { return params[0] }
+                return "void"
+            }
+            if base == "str" { return "str" }
+            if base == "Map" {
+                let params = type_params(obj_t)
+                if len(params) > 1 { return params[1] }
+                return "void"
+            }
+            self.type_err("List|str|Map", obj_t, node.obj)
+            return "void"
+        }
+        if node.kind == "StructLit" {
+            var fi = 0
+            while fi < len(node.fields) { self.infer_type(node_pool[node.fields[fi]].inner); fi = fi + 1 }
+            let base = base_type(node.type_name)
+            if self.find_cls(base) >= 0 { return node.type_name }
+            self.err("no class named `" + node.type_name + "`", node_id, "E0412")
+            return node.type_name
+        }
+        if node.kind == "RangeLit" { return "List<int>" }
+        if node.kind == "TryOp" {
+            let inner = self.infer_type(node.operand)
+            let base = base_type(inner)
+            let params = type_params(inner)
+            if base == "Result" or base == "Option" {
+                if len(params) > 0 { return params[0] }
+                return "void"
+            }
+            self.type_err("Result or Option", inner, node.operand)
+            return "void"
+        }
+        if node.kind == "VarDecl" {
+            if node.type_ann != "" {
+                if node.inner >= 0 {
+                    let vt = self.infer_type(node.inner)
+                    if not self.is_compatible(vt, node.type_ann) {
+                        self.type_err(node.type_ann, vt, node.inner)
+                    }
+                }
+                return node.type_ann
+            }
+            if node.inner >= 0 { return self.infer_type(node.inner) }
+            return "void"
+        }
+        return "void"
+    }
+
+    fn is_compatible(self, found: str, expected: str) -> bool {
+        if found == expected { return true }
+        if self.is_generic(expected) or self.is_generic(found) { return true }
+        if base_type(found) == base_type(expected) { return true }
+        if expected == "float" and found == "int" { return true }
+        if expected == "Option<void>" and found == "Option<void>" { return true }
+        if starts_with(expected, "Option<") and found == "Option<void>" { return true }
+        return false
+    }
+
+    fn check_stmt(self, node_id: int) -> void {
+        let node = node_pool[node_id]
+        if node.kind == "VarDecl" {
+            if node.inner >= 0 {
+                let vt = self.infer_type(node.inner)
+                if node.type_ann != "" and not self.is_compatible(vt, node.type_ann) {
+                    self.type_err(node.type_ann, vt, node.inner)
+                }
+                let resolved = node.type_ann
+                if resolved == "" { resolved = vt }
+                self.declare_var(node.name, resolved)
+            } else {
+                if node.type_ann != "" { self.declare_var(node.name, node.type_ann) }
+                else { self.declare_var(node.name, "void") }
+            }
+        } elif node.kind == "Assignment" {
+            let tt = self.infer_type(node.target)
+            let vt = self.infer_type(node.inner)
+            if not self.is_compatible(vt, tt) {
+                self.type_err(tt, vt, node.inner)
+            }
+        } elif node.kind == "ReturnStmt" {
+            if node.inner >= 0 {
+                let vt = self.infer_type(node.inner)
+                if self.in_fn_ret != "" and not self.is_compatible(vt, self.in_fn_ret) {
+                    self.type_err(self.in_fn_ret, vt, node.inner)
+                }
+            } elif self.in_fn_ret != "" and self.in_fn_ret != "void" {
+                self.err("expected `" + self.in_fn_ret + "` return value", node_id, "E0057")
+            }
+        } elif node.kind == "YieldStmt" {
+            if node.inner >= 0 { self.infer_type(node.inner) }
+        } elif node.kind == "IfStmt" {
+            self.infer_type(node.cond)
+            self.push_scope()
+            var si = 0
+            while si < len(node.then_body) { self.check_stmt(node.then_body[si]); si = si + 1 }
+            self.pop_scope()
+            var ei = 0
+            while ei < len(node.elif_clauses) {
+                let elif_node = node_pool[node.elif_clauses[ei]]
+                self.infer_type(elif_node.cond)
+                self.push_scope()
+                var esi = 0
+                while esi < len(elif_node.then_body) { self.check_stmt(elif_node.then_body[esi]); esi = esi + 1 }
+                self.pop_scope()
+                ei = ei + 1
+            }
+            if len(node.else_body) > 0 {
+                self.push_scope()
+                var esi = 0
+                while esi < len(node.else_body) { self.check_stmt(node.else_body[esi]); esi = esi + 1 }
+                self.pop_scope()
+            }
+        } elif node.kind == "ForStmt" {
+            let iter_t = self.infer_type(node.iterable)
+            self.push_scope()
+            var var_type: str = "void"
+            if node_pool[node.iterable].kind == "RangeLit" { var_type = "int" }
+            else {
+                let base = base_type(iter_t)
+                if base == "List" or base == "Map" or base == "str" {
+                    let params = type_params(iter_t)
+                    if len(params) > 0 { var_type = params[0] }
+                }
+            }
+            self.declare_var(node.var_name, var_type)
+            var si = 0
+            while si < len(node.body) { self.check_stmt(node.body[si]); si = si + 1 }
+            self.pop_scope()
+        } elif node.kind == "WhileStmt" {
+            self.infer_type(node.cond)
+            self.push_scope()
+            var si = 0
+            while si < len(node.body) { self.check_stmt(node.body[si]); si = si + 1 }
+            self.pop_scope()
+        } elif node.kind == "MatchStmt" {
+            self.infer_type(node.subject)
+            var ai = 0
+            while ai < len(node.arms) {
+                let arm = node_pool[node.arms[ai]]
+                self.push_scope()
+                var si = 0
+                while si < len(arm.body) { self.check_stmt(arm.body[si]); si = si + 1 }
+                self.pop_scope()
+                ai = ai + 1
+            }
+        } elif node.kind == "FnDef" {
+            let old_ret = self.in_fn_ret
+            self.in_fn_ret = node.return_type
+            let old_generic = self.generic_params
+            var gp: List<str> = []
+            var gi = 0
+            while gi < len(node.generics) { push(gp, node_pool[node.generics[gi]].str_val); gi = gi + 1 }
+            self.generic_params = gp
+            let old_cls = self.in_class
+            if node.has_self { self.in_class = self.in_class }
+            self.push_scope()
+            var pi = 0
+            while pi < len(node.params) {
+                let p = node_pool[node.params[pi]]
+                self.declare_var(p.name, p.type_ann)
+                pi = pi + 1
+            }
+            var si = 0
+            while si < len(node.body) { self.check_stmt(node.body[si]); si = si + 1 }
+            self.pop_scope()
+            self.in_class = old_cls
+            self.generic_params = old_generic
+            self.in_fn_ret = old_ret
+        } elif node.kind == "ClassDef" {
+            let old_cls = self.in_class
+            self.in_class = node.name
+            var mi = 0
+            while mi < len(node.methods) {
+                self.check_stmt(node.methods[mi])
+                mi = mi + 1
+            }
+            self.in_class = old_cls
+        } elif node.kind == "ImportStmt" {
+            // Modules already resolved by compile_source; nothing to check
+        } elif node.kind == "ExprStmt" {
+            self.infer_type(node.inner)
+        } elif node.kind == "BreakStmt" or node.kind == "ContinueStmt" {
+            // No validation yet
+        }
+    }
+
+    fn err(self, msg: str, node_id: int, code: str) -> void {
+        let n = node_pool[node_id]
+        push(self.diags, make_diag(OX_SEVERITY_ERROR, msg, code, n.s_line, n.s_col))
+    }
+
+    fn type_err(self, expected: str, found: str, node_id: int) -> void {
+        let msg = "expected `" + expected + "`, found `" + found + "`"
+        let n = node_pool[node_id]
+        push(self.diags, make_diag(OX_SEVERITY_ERROR, msg, "E0308", n.s_line, n.s_col))
+    }
+}
+
+// ── Type-check entry ─────────────────────────────────────────
+fn check_source(src: str, source_path: str) -> void {
+    node_pool = []
+    let lexer = Lexer { src: src, pos: 0, line: 1, col: 1 }
+    let tokens = lexer.tokenize()
+    let parser = Parser { tokens: tokens, pos: 0, src: src, cur_tok: tokens[0] }
+    let ast = parser.parse()
+
+    let tc = TypeChecker {
+        src: src, source_path: source_path,
+        diags: [], scopes: [],
+        fn_names: [], fn_param_types: [], fn_rets: [],
+        cls_names: [], cls_field_names: [], cls_field_types: [],
+        in_fn_ret: "", in_class: "", generic_params: []
+    }
+    tc.check(ast)
+
+    if len(tc.diags) > 0 {
+        var i = 0
+        while i < len(tc.diags) {
+            print(render_one(tc.diags[i], src, source_path))
+            i = i + 1
+        }
+        exit(1)
+    }
+    print("No errors found")
+}
+
 // ── Entry point ─────────────────────────────────────────────
 fn compile_source(src: str, source_path: str) -> int {
     node_pool = []
     let lexer = Lexer { src: src, pos: 0, line: 1, col: 1 }
     let tokens = lexer.tokenize()
-    let parser = Parser { tokens: tokens, pos: 0, src: src }
+    let parser = Parser { tokens: tokens, pos: 0, src: src, cur_tok: tokens[0] }
     let ast = parser.parse()
 
     // ── Module resolution ──
@@ -2971,7 +3999,7 @@ fn compile_source(src: str, source_path: str) -> int {
             // Parse module
             let mod_lexer = Lexer { src: mod_src, pos: 0, line: 1, col: 1 }
             let mod_tokens = mod_lexer.tokenize()
-            let mod_parser = Parser { tokens: mod_tokens, pos: 0, src: mod_src }
+            let mod_parser = Parser { tokens: mod_tokens, pos: 0, src: mod_src, cur_tok: mod_tokens[0] }
             let mod_ast = mod_parser.parse()
 
             // Build module name and C++-safe namespace name
@@ -3041,13 +4069,14 @@ fn compile_source(src: str, source_path: str) -> int {
 fn main() -> void {
     let cli_args: List<str> = args()
     if len(cli_args) < 2 {
-        print("Usage: oxybelis <source.ox> [--cc CXX] [--cflags FLAGS] [-o FILE] [-S]")
+        print("Usage: oxybelis <source.ox> [--check] [--cc CXX] [--cflags FLAGS] [-o FILE] [-S]")
         exit(1)
     }
     let source_path: str = cli_args[1]
     var output_path: str = ""
     var do_compile = true
     var emit_cpp = false
+    var do_check = false
     var cc: str = "g++"
     var cflags: str = "-O3 -std=c++20"
 
@@ -3056,6 +4085,7 @@ fn main() -> void {
         if cli_args[ai] == "-o" and ai + 1 < len(cli_args) {
             output_path = cli_args[ai + 1]; ai = ai + 1
         } elif cli_args[ai] == "-S" { emit_cpp = true; do_compile = false }
+        elif cli_args[ai] == "--check" { do_check = true; do_compile = false }
         elif cli_args[ai] == "--cc" and ai + 1 < len(cli_args) { cc = cli_args[ai + 1]; ai = ai + 1 }
         elif cli_args[ai] == "--cflags" and ai + 1 < len(cli_args) { cflags = cli_args[ai + 1]; ai = ai + 1 }
         ai = ai + 1
@@ -3065,6 +4095,11 @@ fn main() -> void {
     if src == "" {
         print("Error: Could not read " + source_path)
         exit(1)
+    }
+
+    if do_check {
+        check_source(src, source_path)
+        exit(0)
     }
 
     let result_id = compile_source(src, source_path)

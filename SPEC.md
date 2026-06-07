@@ -88,6 +88,7 @@ none_lit ::= 'None'
 =       :       ,       ;       .           // punctuation
 (       )       [       ]       {       }   // grouping
 ..                                          // range
+...                                         // ellipsis (multidimensional slice)
 ?                                           // try-unwrap
 ```
 
@@ -408,7 +409,28 @@ list[0]        // index into List<T>
 map["key"]     // index into Map<K, V>
 ```
 
-### 4.8 Struct/Class Initializer
+### 4.8 Slice Expression
+
+```oxybelis
+list[1:3]        // slice from index 1 to 3 (exclusive)
+list[1:]         // slice from index 1 to end
+list[:3]         // slice from start to index 3
+list[:]          // full slice (copy)
+list[::2]        // every other element
+list[1:5:2]      // slice from 1 to 5, step 2
+```
+
+Slicing creates a new `List<T>` with the selected elements. All slice components are optional:
+- `[start:end]` — elements from `start` (inclusive) to `end` (exclusive)
+- `[start:]` — from `start` to the end
+- `[:end]` — from the start to `end`
+- `[:]` — copy of the entire list
+- `[::step]` — every `step`-th element
+- `[start:end:step]` — combined
+
+Negative indices are supported (Python-style), counting from the end of the list.
+
+### 4.9 Struct/Class Initializer
 
 ```oxybelis
 Vector2 { x: 3.0, y: 4.0 }
@@ -417,7 +439,7 @@ Person { name: "Alice", age: 30 }
 
 Field order is not significant. All fields must be specified.
 
-### 4.9 Option/Result Constructors
+### 4.10 Option/Result Constructors
 
 ```oxybelis
 Some(value)    // wrap a value in Option<T>
@@ -426,7 +448,7 @@ Ok(value)      // successful Result<T, E>
 Err(error)     // failed Result<T, E>
 ```
 
-### 4.10 Try-Unwrap Operator
+### 4.11 Try-Unwrap Operator
 
 ```oxybelis
 expr?          // unwrap Option<T> or Result<T,E>
@@ -435,11 +457,11 @@ expr?          // unwrap Option<T> or Result<T,E>
 On `Option<T>`: returns `T` or aborts if `None`.  
 On `Result<T, E>`: returns `T` or aborts if `Err`.
 
-### 4.11 If-Else Expression (ternary)
+### 4.12 If-Else Expression (ternary)
 
 Not yet implemented. Use `if`/`else` as statements.
 
-### 4.12 Lambda Expressions
+### 4.13 Lambda Expressions
 
 Not yet implemented. Use named function references for higher-order calls.
 
@@ -682,6 +704,61 @@ class Box<T> {
     value: T;
 }
 ```
+
+### 7.5 Operator Overloading
+
+Classes can define operator methods using the following naming convention:
+
+| Operator | Method Name |
+|----------|-------------|
+| `+` | `op_add` |
+| `-` | `op_sub` |
+| `*` | `op_mul` |
+| `/` | `op_div` |
+| `%` | `op_mod` |
+| `==` | `op_eq` |
+| `!=` | `op_ne` |
+| `<` | `op_lt` |
+| `>` | `op_gt` |
+| `<=` | `op_le` |
+| `>=` | `op_ge` |
+| unary `-` | `op_neg` |
+| unary `!` | `op_not` |
+
+These methods are defined like regular class methods with `self` as the first parameter:
+
+```oxybelis
+class Vec2 {
+    x: float;
+    y: float;
+
+    fn op_add(self, other: Vec2) -> Vec2 {
+        return Vec2 { x: self.x + other.x, y: self.y + other.y }
+    }
+    fn op_sub(self, other: Vec2) -> Vec2 {
+        return Vec2 { x: self.x - other.x, y: self.y - other.y }
+    }
+    fn op_mul(self, scalar: float) -> Vec2 {
+        return Vec2 { x: self.x * scalar, y: self.y * scalar }
+    }
+}
+
+fn main() {
+    let a = Vec2 { x: 1.0, y: 2.0 }
+    let b = Vec2 { x: 3.0, y: 4.0 }
+    let c = a + b   // calls a.op_add(b)
+    let d = a - b   // calls a.op_sub(b)
+    let e = a * 2.0 // calls a.op_mul(2.0)
+
+    print(c.x)  // 4.0
+    print(d.y)  // -2.0
+    print(e.x)  // 2.0
+}
+```
+
+Operator methods are resolved at compile-time based on the left operand's type. The type checker falls through to the default arithmetic/comparison rules if no matching operator method is found.
+
+Comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`) return `bool` by default but the overloaded method can return any type.
 
 ---
 
@@ -1061,7 +1138,9 @@ cmp_expr        = add_expr { ('==' | '!=' | '<' | '>' | '<=' | '>=') add_expr }
 add_expr        = mul_expr { ('+' | '-') mul_expr }
 mul_expr        = unary_expr { ('*' | '/' | '%') unary_expr }
 unary_expr      = ('-' | 'not' | '!') unary_expr | postfix_expr
-postfix_expr    = primary_expr { '(' [expr_list] ')' | '[' expr ']' | '.' identifier | '?' }
+postfix_expr    = primary_expr { '(' [expr_list] ')' | '[' slice_or_index ']' | '.' identifier | '?' }
+slice_or_index  = expr [':' [expr] [':' [expr]]] { ',' expr [':' [expr] [':' [expr]]] }
+                | '...' { ',' expr [':' [expr] [':' [expr]]] }
 primary_expr    = literal | identifier | '(' expr ')' | range_expr
                 | 'Some' '(' expr ')' | 'Ok' '(' expr ')' | 'Err' '(' expr ')'
                 | type_name '{' field_init_list '}'
@@ -1087,7 +1166,7 @@ identifier      = (letter | '_') { letter | digit | '_' }
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.3.4 | 2026-06-06 | Self-hosting bootstrap complete: TypeChecker in `compiler.ox`, `--check` passes cleanly, `compiler.exe compiler.ox -S` produces correct C++ |
+| 0.3.4 | 2026-06-06 | Operator overloading, Python-style slicing `[start:end:step]`, NdArray slice support, ellipsis `...` for multidimensional indexing |
 | 0.3.3 | 2026-06-05 | LSP markdown docs, function token highlighting, formatter blank-line preservation, cleanup |
 | 0.3.2 | 2026-06-04 | Generators, yield, itertools, examples, string stdlib, self-hosting compiler |
 | 0.3.0 | — | Collections, functional chaining, pattern matching |

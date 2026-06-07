@@ -3,18 +3,20 @@
 ## P0 — Blocking
 
 ### Self-hosting compiler parity (compiler.ox)
-- [ ] **Type checker** — mirror `TypeChecker` from `oxybelis.py` into `compiler.ox`
-  - Type inference for all expressions
-  - Function signature validation
-  - Generic type parameter resolution
-  - Method dispatch and overload resolution
-- [ ] **Rich diagnostics** — structured `Span`/`Diagnostic` types in compiler.ox
-  - Multi-line error underlines
-  - Severity levels (error, warning, note, help)
-  - Error codes (`E0001`, `E0308`, etc.)
+- [x] **Type checker** — fully mirrored in `compiler.ox`
+  - Type inference for all expressions — `infer_type_impl` covers literals, idents, binops, unary, calls, method calls, index, attr, struct literals, ranges, `Some`/`Ok`/`Err`
+  - Function signature validation — param count/type checking, return type checking
+  - Generic type parameter resolution — `generic_params` scope with `is_generic`
+  - Method dispatch — class method lookup via `cls_field_names`/`cls_field_types`
+  - ⚠️ Known limitations: no overloaded function resolution for user-defined functions; no inference for `map` callback return types beyond `List<elem_type>`
+- [x] **Rich diagnostics** — fully implemented
+  - `Span`/`Diagnostic` types with line/col
+  - Multi-line error underlines via `render_one`
+  - Severity levels
+  - Error codes (`E0002`, `E0308`, `E0057`, `E0060`, `E0425`, etc.)
   - `--check` flag for type-check-only mode
-  - `--highlight` flag
-- [ ] **Span tracking in AST** — store source positions in node pool
+  - ❌ `--highlight` flag (not yet in self-hosted version)
+- [x] **Span tracking in AST** — `s_line`/`s_col` fields in every node
 
 ### Standard library — Strings
 - [x] All string functions implemented in `oxybelis.py` RUNTIME C++:
@@ -152,9 +154,10 @@
 
 ---
 
-## Current Focus (v0.3.3 → v0.4.0)
+## Current Focus (v0.3.4 → v0.4.0)
 
-1. [ ] **Self-hosting compiler parity** — add type checker to `compiler.ox`
-2. [ ] **SPEC.md** — complete language specification document
-3. [ ] **LSP features** — go-to-definition, find references, rename
-4. [ ] **Math module discussion** — Eigen vs MKL vs custom
+1. [x] **Self-hosting compiler parity** — TypeChecker in `compiler.ox`, `--check` passes cleanly, bootstrap verified
+2. [x] **SPEC.md** — language specification document complete
+3. [ ] **Bootstrap hardening** — verify generator state-machine codegen works in self-hosted output; test self-hosted compile of `oxlib/` modules; fight-test with real-world `.ox` files
+4. [ ] **LSP features** — go-to-definition, find references, rename
+5. [ ] **Math module discussion** — Eigen vs MKL vs custom

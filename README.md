@@ -56,7 +56,7 @@ cd oxybelis
 python oxybelis.py hello.ox
 ```
 
-The Python version has a full type checker (`--check`). The bootstrapped compiler (`compiler.ox`) is lighter — no type-checking pass but self-hosting.
+The Python version has a full type checker (`--check`). The bootstrapped compiler (`compiler.ox`) also has a full type checker and supports self-hosting — `compiler.exe compiler.ox -S` produces a correct `compiler2.exe` that passes its own `--check`.
 
 ## CLI
 

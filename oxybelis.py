@@ -1300,6 +1300,26 @@ std::vector<T> _ox_cycle(const std::vector<T>& v, int n) {
     return r;
 }
 
+// ── sorted helper ───────────────────────────────────────────────────────
+template<typename T>
+std::vector<T> _ox_sorted(const std::vector<T>& v, bool reverse=false) {
+    std::vector<T> r = v;
+    std::sort(r.begin(), r.end());
+    if (reverse) std::reverse(r.begin(), r.end());
+    return r;
+}
+
+// ── map / list helpers ──────────────────────────────────────────────────────
+template<typename K, typename V>
+bool map_contains(const std::unordered_map<K,V>& m, const K& k) {
+    std::vector<T> r;
+    r.reserve(v.size() * n);
+    for (int i = 0; i < n; i++) {
+        for (const auto& x : v) r.push_back(x);
+    }
+    return r;
+}
+
 template<typename T>
 std::vector<T> _ox_take_while(const std::vector<T>& v, bool (*fn)(T)) {
     std::vector<T> r;
@@ -2194,9 +2214,15 @@ class CodeGen:
             mname = map_type(node.name) if '<' in node.name else node.name
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
                 return f"_oxm_{node.obj.name}::{mname}({args})"
-            if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max','combinations','permutations','chunked','windowed','pairwise','reversed','cycle','take_while','drop_while'):
-                return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
-            return f"{obj}.{mname}({args})"
+         if node.name == 'sorted':
+             # Expect optional `reverse` boolean argument
+             if args:
+                 return f"_ox_sorted({obj}, {args})"
+             else:
+                 return f"_ox_sorted({obj})"
+         if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max','combinations','permutations','chunked','windowed','pairwise','reversed','cycle','take_while','drop_while'):
+                 return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
+         return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
             if node.name == 'value' and isinstance(node.obj, (Ident, FnCall, MethodCall)):
                 obj_type = getattr(node.obj, '_type', '')

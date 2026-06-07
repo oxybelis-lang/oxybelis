@@ -997,7 +997,7 @@ def handle_signature_help(msg: LSPMessage):
     for i, tok in enumerate(tokens):
         if tok.type == TT.EOF:
             break
-        if tok.line - 1 > line or (tok.line - 1 == line and tok.col - 1 > col):
+        if tok.line - 1 > line or (tok.line - 1 == line and tok.col - 1 >= col):
             break
         # Track nesting
         if tok.type == TT.LPAREN:
