@@ -2422,7 +2422,7 @@ class CodeGen {
             self.w("template<typename T> void list_insert(std::vector<T>& v, int i, const T& x){ v.insert(v.begin() + i, x); }")
             self.w("template<typename T> T list_remove(std::vector<T>& v, int i){ T x = v[i]; v.erase(v.begin() + i); return x; }")
             self.w("template<typename T> std::string str(const std::unordered_set<T>& s){ std::string r=\"{\"; bool first=true; for(const auto &x: s){ if(!first) r+=\", \"; first=false; r+=str(x);} return r+\"}\"; }")
-            self.w("template<typename T> void print(const std::unordered_set<T>& s){ std::cout<<str(s)<<"\\n"; }")
+            self.w("template<typename T> void print(const std::unordered_set<T>& s){ std::cout<<str(s)<<std::endl; }")
             self.w("")
             self.w("// ── functional chaining (List<T>) ───")
             self.w("template<typename T,typename U> std::vector<U> _ox_map(const std::vector<T>& v,U(*fn)(T)){")
