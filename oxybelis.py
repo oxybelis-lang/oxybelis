@@ -11,6 +11,9 @@ Usage:  python oxybelis.py <source.ox>            # → source.exe
 import sys
 import os
 from dataclasses import dataclass, field
+
+__version__ = '0.4.0'
+__version_info__ = (0, 4, 0)
 from typing import Optional, List as PyList, Any, Tuple
 from enum import Enum, auto
 from ox_diag import (Span, Severity, Diagnostic, SourceFile,
@@ -41,7 +44,7 @@ class TT(Enum):
     ASSIGN=auto(); PLUS_ASSIGN=auto(); MINUS_ASSIGN=auto()
     STAR_ASSIGN=auto(); SLASH_ASSIGN=auto()
     DOTDOT=auto(); ARROW=auto(); FAT_ARROW=auto(); DOT=auto()
-    BANG=auto(); QUESTION=auto()
+    BANG=auto(); QUESTION=auto(); PIPE=auto()
     # Delimiters
     LBRACE=auto(); RBRACE=auto(); LPAREN=auto(); RPAREN=auto()
     LBRACKET=auto(); RBRACKET=auto()
@@ -219,6 +222,7 @@ class Lexer:
             elif ch == ',':  tokens.append(self.tok(TT.COMMA,    ',', line, col))
             elif ch == ';':  tokens.append(self.tok(TT.SEMI,     ';', line, col))
             elif ch == '?':  tokens.append(self.tok(TT.QUESTION,'?', line, col))
+            elif ch == '|':  tokens.append(self.tok(TT.PIPE,    '|', line, col))
             else: raise LexError(f"Unknown character {ch!r}", line, col)
 
         return tokens
@@ -257,7 +261,9 @@ class IfStmt:
     cond: Any; then_body: PyList[Any]
     elif_clauses: PyList[Tuple[Any,PyList[Any]]]; else_body: Optional[PyList[Any]]
 @dataclass
-class ForStmt:      var: str; iterable: Any; body: PyList[Any]
+class ForStmt:
+    var: str; iterable: Any; body: PyList[Any]
+    vars: PyList[str] = field(default_factory=list)
 @dataclass
 class WhileStmt:    cond: Any; body: PyList[Any]
 @dataclass
@@ -294,9 +300,20 @@ class SomeLit:      value: Any
 @dataclass
 class ListLit:      elems: PyList[Any]
 @dataclass
+class TupleLit:     elems: PyList[Any]
+@dataclass
+class LambdaExpr:   params: PyList[str]; body: Any
+@dataclass
+class TernaryExpr:  then_expr: Any; cond: Any; else_expr: Any
+@dataclass
 class StructLit:    type_name: str; fields: PyList[Tuple[str,Any]]
 @dataclass
 class RangeLit:     start: Any; end: Any
+@dataclass
+class SliceLit:
+    start: Optional[Any] = None
+    end: Optional[Any] = None
+    step: Optional[Any] = None
 @dataclass
 class WildCard:     pass
 @dataclass
@@ -423,7 +440,10 @@ class Parser:
                 self._set_span(pname_node, pname_tok)
                 self.expect(TT.COLON)
                 ptype = self.parse_type()
-                params.append((pname, ptype, pname_node))
+                default = None
+                if self.match_tok(TT.ASSIGN):
+                    default = self.parse_expr()
+                params.append((pname, ptype, default, pname_node))
                 if not self.match_tok(TT.COMMA): break
 
         self.expect(TT.RPAREN)
@@ -466,8 +486,18 @@ class Parser:
         t = self.peek()
         if t.type in type_kws:
             self.advance(); return type_kws[t.type]
+        if t.type == TT.LPAREN:
+            self.advance()
+            types = []
+            while not self.check(TT.RPAREN):
+                types.append(self.parse_type())
+                if not self.match_tok(TT.COMMA): break
+            self.expect(TT.RPAREN)
+            return f"({', '.join(types)})"
         if t.type == TT.IDENT:
             name = self.advance().value
+            type_aliases = {'list':'List', 'option':'Option', 'result':'Result', 'map':'Map'}
+            name = type_aliases.get(name, name)
             if self.match_tok(TT.LT):
                 args = []
                 while not self.check(TT.GT):
@@ -526,8 +556,24 @@ class Parser:
     def parse_var_decl(self) -> VarDecl:
         st = self.peek()
         mutable = self.advance().type == TT.VAR
-        nt = self.peek()
         name_tok = self.peek()
+        if self.check(TT.LPAREN):
+            # Tuple destructuring: let (a, b, c) = expr
+            self.advance()
+            var_names = []
+            while not self.check(TT.RPAREN, TT.EOF):
+                var_names.append(self.expect(TT.IDENT).value)
+                if not self.match_tok(TT.COMMA): break
+            self.expect(TT.RPAREN)
+            name = ','.join(var_names)
+            type_ann = None
+            if self.match_tok(TT.COLON): type_ann = self.parse_type()
+            self.expect(TT.ASSIGN)
+            value = self.parse_expr()
+            n = VarDecl(name, type_ann, value, mutable)
+            n._destructure_vars = var_names
+            self._set_span_range(n, st, self.peek())
+            return n
         name = self.expect(TT.IDENT).value
         name_node = Ident(name)
         self._set_span(name_node, name_tok)
@@ -568,11 +614,21 @@ class Parser:
     def parse_for(self) -> ForStmt:
         st = self.peek()
         self.expect(TT.FOR)
-        var = self.expect(TT.IDENT).value
+        if self.check(TT.LPAREN):
+            self.advance()
+            vars = []
+            while not self.check(TT.RPAREN, TT.EOF):
+                vars.append(self.expect(TT.IDENT).value)
+                if not self.match_tok(TT.COMMA): break
+            self.expect(TT.RPAREN)
+            var = ','.join(vars)
+        else:
+            var = self.expect(TT.IDENT).value
+            vars = [var]
         self.expect(TT.IN)
         iterable = self.parse_expr()
         body = self.parse_block()
-        n = ForStmt(var, iterable, body)
+        n = ForStmt(var, iterable, body, vars=vars)
         self._set_span_range(n, st, self.peek())
         return n
 
@@ -614,11 +670,26 @@ class Parser:
 
     # ── Expressions ────────────────────────────────────────────
 
-    def parse_expr(self):
+    def parse_if_expr(self):
         expr = self.parse_or()
+        if self.check(TT.IF):
+            saved = self.pos
+            self.advance()  # consume 'if'
+            cond = self.parse_or()
+            if self.check(TT.ELSE):
+                self.advance()
+                else_expr = self.parse_if_expr()
+                n = TernaryExpr(expr, cond, else_expr)
+                self._set_span_range(n, getattr(expr, '_span_start', None) or self.peek(), self.peek())
+                return n
+            self.pos = saved  # backtrack — not a ternary
+        return expr
+
+    def parse_expr(self):
+        expr = self.parse_if_expr()
         # Range: a..b  (lower precedence than everything else)
         if self.match_tok(TT.DOTDOT):
-            end = self.parse_or()
+            end = self.parse_if_expr()
             return RangeLit(expr, end)
         return expr
 
@@ -640,7 +711,7 @@ class Parser:
         return self._binop(self.parse_compare, [TT.AND])
 
     def parse_compare(self):
-        return self._binop(self.parse_add, [TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ])
+        return self._binop(self.parse_add, [TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ, TT.IN])
 
     def parse_add(self):
         return self._binop(self.parse_mul, [TT.PLUS, TT.MINUS])
@@ -665,6 +736,12 @@ class Parser:
                 dt = self.peek()
                 self.advance()
                 name_tok = self.peek()
+                if self.check(TT.INT_LIT):
+                    name = self.advance().value
+                    n = Attr(expr, name)
+                    self._set_span_range(n, dt, name_tok)
+                    expr = n
+                    continue
                 name = self.expect(TT.IDENT).value
                 # Generic type args on method call: obj.method<Type>(args)
                 if self.check(TT.LT):
@@ -711,12 +788,37 @@ class Parser:
             elif self.check(TT.LBRACKET):
                 lb = self.peek()
                 self.advance()
-                idx = self.parse_expr()
-                rb = self.peek()
-                self.expect(TT.RBRACKET)
-                n = Index(expr, idx)
-                self._set_span_range(n, lb, rb)
-                expr = n
+                if self.check(TT.COLON):
+                    # slice without start: [:end:step]
+                    self.advance()
+                    end = self.parse_expr() if not self.check(TT.COLON, TT.RBRACKET) else None
+                    step = None
+                    if self.match_tok(TT.COLON):
+                        step = self.parse_expr() if not self.check(TT.RBRACKET) else None
+                    rb = self.peek()
+                    self.expect(TT.RBRACKET)
+                    n = Index(expr, SliceLit(None, end, step))
+                    self._set_span_range(n, lb, rb)
+                    expr = n
+                else:
+                    idx = self.parse_expr()
+                    if self.match_tok(TT.COLON):
+                        # slice with start: [start:end:step]
+                        end = self.parse_expr() if not self.check(TT.COLON, TT.RBRACKET) else None
+                        step = None
+                        if self.match_tok(TT.COLON):
+                            step = self.parse_expr() if not self.check(TT.RBRACKET) else None
+                        rb = self.peek()
+                        self.expect(TT.RBRACKET)
+                        n = Index(expr, SliceLit(idx, end, step))
+                        self._set_span_range(n, lb, rb)
+                        expr = n
+                    else:
+                        rb = self.peek()
+                        self.expect(TT.RBRACKET)
+                        n = Index(expr, idx)
+                        self._set_span_range(n, lb, rb)
+                        expr = n
             elif self.check(TT.QUESTION):
                 q = self.peek(); self.advance()
                 n = TryOp(expr)
@@ -748,7 +850,32 @@ class Parser:
             et = self.peek(); self.expect(TT.RBRACKET)
             n = ListLit(elems); self._set_span_range(n, st, et); return n
         if t.type == TT.LPAREN:
-            self.advance(); expr = self.parse_expr(); self.expect(TT.RPAREN); return expr
+            st = t; self.advance()
+            if self.check(TT.RPAREN):
+                et = self.peek(); self.expect(TT.RPAREN)
+                n = TupleLit([]); self._set_span_range(n, st, et); return n
+            expr = self.parse_expr()
+            if self.match_tok(TT.COMMA):
+                elems = [expr]
+                while not self.check(TT.RPAREN, TT.EOF):
+                    elems.append(self.parse_expr())
+                    if not self.match_tok(TT.COMMA): break
+                et = self.peek(); self.expect(TT.RPAREN)
+                n = TupleLit(elems); self._set_span_range(n, st, et); return n
+            et = self.peek(); self.expect(TT.RPAREN)
+            self._set_span(expr, st)
+            return expr
+        if t.type == TT.PIPE:
+            st = t; self.advance()
+            params = []
+            while not self.check(TT.PIPE, TT.EOF):
+                params.append(self.expect(TT.IDENT).value)
+                if not self.match_tok(TT.COMMA): break
+            self.expect(TT.PIPE)
+            body = self.parse_expr()
+            n = LambdaExpr(params, body)
+            self._set_span_range(n, st, self.peek())
+            return n
 
         # Identifier or struct literal
         if t.type == TT.IDENT:
@@ -947,7 +1074,19 @@ private:
     Option<T> _current;
 };
 
-    // ── str (declared before print) ─────────────────────────────────────────────
+    // ── make_list (initializer_list helper) ──────────────────────────────────────
+template<typename T>
+List<T> _ox_make_list(std::initializer_list<T> il) {
+    return List<T>(il);
+}
+
+inline List<std::string> _ox_make_list(std::initializer_list<const char*> il) {
+    List<std::string> r;
+    for (auto* s : il) r.push_back(std::string(s));
+    return r;
+}
+
+// ── str (declared before print) ─────────────────────────────────────────────
 inline std::string str(const std::string& v){ return v; }
 inline std::string str(const char* v)     { return std::string(v); }
 inline std::string str(int v)        { return std::to_string(v); }
@@ -972,23 +1111,26 @@ std::string str(const Generator<T>& g) {
     (void)g; return "<generator>";
 }
 
-// ── print ──────────────────────────────────────────────────────────────────
+// ── print (variadic) ─────────────────────────────────────────────────────────
 template<typename T>
-void print(const T& v) { std::cout << v << "\n"; }
-inline void print(bool v) { std::cout << (v ? "true" : "false") << "\n"; }
-inline void print(const std::string& v) { std::cout << v << "\n"; }
+void _ox_print_one(const T& v) { std::cout << v; }
+inline void _ox_print_one(bool v) { std::cout << (v ? "true" : "false"); }
+inline void _ox_print_one(const std::string& v) { std::cout << v; }
 template<typename T>
-void print(const std::vector<T>& v) {
-    std::cout << str(v) << "\n";
-}
+void _ox_print_one(const std::vector<T>& v) { std::cout << str(v); }
 template<typename T>
-void print(const std::optional<T>& o){
-    if(o) std::cout<<"Some("<<*o<<")\n"; else std::cout<<"None\n";
-}
+void _ox_print_one(const std::optional<T>& o) { if(o) std::cout<<"Some("<<*o<<")"; else std::cout<<"None"; }
 template<typename T, typename E>
-void print(const Result<T,E>& r){
-    if(r.is_ok) std::cout<<"Ok("<<r.value<<")\n"; else std::cout<<"Err("<<r.error<<")\n";
+void _ox_print_one(const Result<T,E>& r) { if(r.is_ok) std::cout<<"Ok("<<r.value<<")"; else std::cout<<"Err("<<r.error<<")"; }
+
+// Variadic print — handles 1+ args space-separated
+template<typename T, typename... Rest>
+void print(const T& first, const Rest&... rest) {
+    _ox_print_one(first);
+    ((std::cout << " ", _ox_print_one(rest)), ...);
+    std::cout << "\n";
 }
+inline void print() { std::cout << "\n"; }
 
 // ── collections ───────────────────────────────────────────────────────────
 template<typename T> size_t len(const std::vector<T>& v){return v.size();}
@@ -1149,41 +1291,42 @@ inline std::optional<int> str_find(const std::string& s, const std::string& sub)
 }
 
 // ── functional chaining (List<T>) ────────────────────────────────────────
-template<typename T, typename U>
-std::vector<U> _ox_map(const std::vector<T>& v, U (*fn)(T)) {
+template<typename T, typename F>
+auto _ox_map(const std::vector<T>& v, F fn) -> std::vector<std::decay_t<decltype(fn(std::declval<const T&>()))>> {
+    using U = std::decay_t<decltype(fn(std::declval<const T&>()))>;
     std::vector<U> r; r.reserve(v.size());
     for (const auto& x : v) r.push_back(fn(x)); return r;
 }
 
-template<typename T>
-std::vector<T> _ox_filter(const std::vector<T>& v, bool (*fn)(T)) {
+template<typename T, typename F>
+std::vector<T> _ox_filter(const std::vector<T>& v, F fn) {
     std::vector<T> r;
     for (const auto& x : v) if (fn(x)) r.push_back(x); return r;
 }
 
-template<typename T, typename U>
-U _ox_reduce(const std::vector<T>& v, U init, U (*fn)(U, T)) {
+template<typename T, typename U, typename F>
+U _ox_reduce(const std::vector<T>& v, U init, F fn) {
     U acc = init;
     for (const auto& x : v) acc = fn(acc, x); return acc;
 }
 
-template<typename T>
-void _ox_for_each(const std::vector<T>& v, void (*fn)(T)) {
+template<typename T, typename F>
+void _ox_for_each(const std::vector<T>& v, F fn) {
     for (const auto& x : v) fn(x);
 }
 
-template<typename T>
-bool _ox_any(const std::vector<T>& v, bool (*fn)(T)) {
+template<typename T, typename F>
+bool _ox_any(const std::vector<T>& v, F fn) {
     for (const auto& x : v) if (fn(x)) return true; return false;
 }
 
-template<typename T>
-bool _ox_all(const std::vector<T>& v, bool (*fn)(T)) {
+template<typename T, typename F>
+bool _ox_all(const std::vector<T>& v, F fn) {
     for (const auto& x : v) if (!fn(x)) return false; return true;
 }
 
-template<typename T>
-std::optional<T> _ox_find(const std::vector<T>& v, bool (*fn)(T)) {
+template<typename T, typename F>
+std::optional<T> _ox_find(const std::vector<T>& v, F fn) {
     for (const auto& x : v) if (fn(x)) return std::optional<T>(x);
     return std::nullopt;
 }
@@ -1280,6 +1423,23 @@ std::vector<std::vector<T>> _ox_windowed(const std::vector<T>& v, int n) {
 }
 
 template<typename T>
+std::vector<std::pair<int, T>> _ox_enumerate(const std::vector<T>& v) {
+    std::vector<std::pair<int, T>> r;
+    for (int i = 0; i < (int)v.size(); i++) {
+        r.push_back({i, v[i]});
+    }
+    return r;
+}
+
+std::vector<std::pair<int, char>> _ox_enumerate(const std::string& s) {
+    std::vector<std::pair<int, char>> r;
+    for (int i = 0; i < (int)s.size(); i++) {
+        r.push_back({i, s[i]});
+    }
+    return r;
+}
+
+template<typename T>
 std::vector<std::vector<T>> _ox_pairwise(const std::vector<T>& v) {
     return _ox_windowed(v, 2);
 }
@@ -1300,6 +1460,48 @@ std::vector<T> _ox_cycle(const std::vector<T>& v, int n) {
     return r;
 }
 
+// ── slice helper ───────────────────────────────────────────────────────────
+template<typename T>
+std::vector<T> _ox_slice(const std::vector<T>& v, int start, int end, int step) {
+    std::vector<T> r;
+    if (step == 0) step = 1;
+    int sz = (int)v.size();
+    if (start < 0) start = 0;
+    if (end < 0 || end > sz) end = sz;
+    if (step < 0) { step = -step; }
+    for (int i = start; i < end; i += step) {
+        r.push_back(v[i]);
+    }
+    return r;
+}
+
+template<typename T>
+std::vector<T> _ox_slice(const nc::NdArray<T>& arr, int start, int end, int step) {
+    if (step == 0) step = 1;
+    int sz = (int)arr.size();
+    if (start < 0) start = 0;
+    if (end < 0 || end > sz) end = sz;
+    if (step < 0) { step = -step; }
+    std::vector<T> r;
+    for (int i = start; i < end; i += step) {
+        r.push_back(arr[i]);
+    }
+    return r;
+}
+
+inline std::string _ox_str_slice(const std::string& s, int start, int end, int step) {
+    std::string r;
+    if (step == 0) step = 1;
+    int sz = (int)s.size();
+    if (start < 0) start = 0;
+    if (end < 0 || end > sz) end = sz;
+    if (step < 0) { step = -step; }
+    for (int i = start; i < end; i += step) {
+        r += s[i];
+    }
+    return r;
+}
+
 // ── sorted helper ───────────────────────────────────────────────────────
 template<typename T>
 std::vector<T> _ox_sorted(const std::vector<T>& v, bool reverse=false) {
@@ -1309,35 +1511,35 @@ std::vector<T> _ox_sorted(const std::vector<T>& v, bool reverse=false) {
     return r;
 }
 
-// ── map / list helpers ──────────────────────────────────────────────────────
-template<typename K, typename V>
-bool map_contains(const std::unordered_map<K,V>& m, const K& k) {
-    std::vector<T> r;
-    r.reserve(v.size() * n);
-    for (int i = 0; i < n; i++) {
-        for (const auto& x : v) r.push_back(x);
-    }
+inline std::vector<std::string> _ox_sorted(const std::string& s) {
+    std::vector<std::string> r;
+    for (char c : s) r.push_back(std::string(1, c));
+    std::sort(r.begin(), r.end());
     return r;
 }
 
+// ── count helper ───────────────────────────────────────────────────────────
 template<typename T>
-std::vector<T> _ox_take_while(const std::vector<T>& v, bool (*fn)(T)) {
-    std::vector<T> r;
-    for (const auto& x : v) {
-        if (!fn(x)) break;
-        r.push_back(x);
-    }
-    return r;
+int _ox_count(const std::vector<T>& v, const T& x) {
+    return (int)std::count(v.begin(), v.end(), x);
 }
 
-template<typename T>
-std::vector<T> _ox_drop_while(const std::vector<T>& v, bool (*fn)(T)) {
-    std::vector<T> r;
-    bool dropping = true;
-    for (const auto& x : v) {
-        if (dropping && fn(x)) continue;
-        dropping = false;
-        r.push_back(x);
+inline int str_count(const std::string& s, const std::string& sub) {
+    if (sub.empty()) return 0;
+    int count = 0;
+    size_t pos = 0;
+    while ((pos = s.find(sub, pos)) != std::string::npos) {
+        count++;
+        pos += sub.length();
+    }
+    return count;
+}
+
+// ── list from str helper ──────────────────────────────────────────────────────
+inline std::vector<std::string> _ox_list_from_str(const std::string& s) {
+    std::vector<std::string> r;
+    for (char c : s) {
+        r.push_back(std::string(1, c));
     }
     return r;
 }
@@ -1347,6 +1549,23 @@ template<typename K, typename V>
 bool map_contains(const std::unordered_map<K,V>& m, const K& k) {
     return m.count(k) > 0;
 }
+
+template<typename T, typename F>
+std::vector<T> _ox_take_while(const std::vector<T>& v, F fn) {
+    std::vector<T> r;
+    for (const auto& x : v) { if (!fn(x)) break; r.push_back(x); }
+    return r;
+}
+
+template<typename T, typename F>
+std::vector<T> _ox_drop_while(const std::vector<T>& v, F fn) {
+    std::vector<T> r;
+    size_t i = 0;
+    while (i < v.size() && fn(v[i])) i++;
+    for (; i < v.size(); i++) r.push_back(v[i]);
+    return r;
+}
+
 template<typename K, typename V>
 V map_get(const std::unordered_map<K,V>& m, const K& k) {
     return m.at(k);
@@ -1450,6 +1669,11 @@ inline std::string fs_cwd() {
 // ── math helpers ──────────────────────────────────────────────────────────
 template<typename T>
 nc::NdArray<T> _ox_math_to_ndarray(const std::vector<T>& v) {
+    return nc::NdArray<T>(v.begin(), v.end());
+}
+
+template<typename T>
+nc::NdArray<T> _ox_to_ndarray(const std::vector<T>& v) {
     return nc::NdArray<T>(v.begin(), v.end());
 }
 
@@ -1599,6 +1823,15 @@ inline std::vector<double> _ox_math_reshape(const std::vector<double>& a, int ro
     return _ox_math_from_ndarray(arr);
 }
 
+template<typename... Ts>
+auto _ox_sorted(const std::tuple<Ts...>& t) {
+    using T = std::common_type_t<Ts...>;
+    std::vector<T> v;
+    std::apply([&v](auto&&... args) { ((v.push_back(args)), ...); }, t);
+    std::sort(v.begin(), v.end());
+    return v;
+}
+
 // ── User Code ──────────────────────────────────────────────────────────────
 """
 
@@ -1611,8 +1844,8 @@ _TYPE_MAP = {'int':'int','float':'double','bool':'bool','str':'std::string','voi
 def _split_args(s: str) -> PyList[str]:
     args, cur, depth = [], '', 0
     for c in s:
-        if c=='<': depth+=1
-        elif c=='>': depth-=1
+        if c in '<([': depth+=1
+        elif c in '>)]': depth-=1
         if c==',' and depth==0: args.append(cur.strip()); cur=''
         else: cur+=c
     if cur.strip(): args.append(cur.strip())
@@ -1620,6 +1853,10 @@ def _split_args(s: str) -> PyList[str]:
 
 def map_type(t: str) -> str:
     if t in _TYPE_MAP: return _TYPE_MAP[t]
+    if t.startswith('('):
+        inner = t[1:-1]
+        mapped = ', '.join(map_type(a) for a in _split_args(inner))
+        return f"std::tuple<{mapped}>"
     if '<' in t:
         outer = t[:t.index('<')]
         inner = t[t.index('<')+1:t.rindex('>')]
@@ -1802,7 +2039,13 @@ class GenTranspiler:
         sn = f"_gen_{self.fn.name}"
         inner = self._get_inner_type()
         ret = f"Generator<{map_type(inner)}>"
-        params = ', '.join(f"{map_type(pt)} {pn}" for pn, pt, *_ in self.fn.params)
+        parts = []
+        for pn, pt, dflt, *_ in self.fn.params:
+            p = f"{map_type(pt)} {pn}"
+            if dflt is not None:
+                p += f" = {self.cg.expr(dflt)}"
+            parts.append(p)
+        params = ', '.join(parts)
         args = ', '.join(pn for pn, _, *_ in self.fn.params)
         return f"{ret} {self.fn.name}({params}) {{\n    auto gen = {sn}({args});\n    return {ret}([gen]() mutable -> Option<{map_type(inner)}> {{ return gen._next(); }});\n}}"
 
@@ -2009,7 +2252,13 @@ class CodeGen:
         self.w('};'); self.w('')
 
     def gen_method(self, fn: FnDef):
-        params = ', '.join(f"{map_type(t)} {n}" for n,t,_ in fn.params)
+        parts = []
+        for n, t, dflt, *_ in fn.params:
+            p = f"{map_type(t)} {n}"
+            if dflt is not None:
+                p += f" = {self.expr(dflt)}"
+            parts.append(p)
+        params = ', '.join(parts)
         self.w(f"{map_type(fn.return_type)} {fn.name}({params}) {{")
         self.depth += 1
         for s in fn.body: self.gen_stmt(s)
@@ -2038,7 +2287,7 @@ class CodeGen:
             return self.gen_generator_fn(fn)
         if fn.generics:
             # Add defaults for params not appearing in function parameters (e.g. deque_new<T>())
-            param_types = {t for _, t, _ in fn.params}
+            param_types = {t for _, t, *_ in fn.params}
             used_in_params = set()
             for pt in param_types:
                 for g in fn.generics:
@@ -2055,12 +2304,15 @@ class CodeGen:
         primitives = {'int', 'float', 'bool', 'str', 'void'}
         generic_set = set(fn.generics)
         parts = []
-        for n, t, *_ in params_list:
+        for n, t, dflt, *_ in params_list:
             base = _base_type(t)
             if base not in primitives and base not in ('List', 'Map', 'Option') and base not in generic_set:
-                parts.append(f"{map_type(t)}& {n}")
+                p = f"{map_type(t)}& {n}"
             else:
-                parts.append(f"{map_type(t)} {n}")
+                p = f"{map_type(t)} {n}"
+            if dflt is not None:
+                p += f" = {self.expr(dflt)}"
+            parts.append(p)
         params = ', '.join(parts)
         # C++ requires main() to return int
         ret = 'int' if fn.name == 'main' else map_type(fn.return_type)
@@ -2100,7 +2352,9 @@ class CodeGen:
 
     def gen_var_decl(self, v: VarDecl):
         val = self.expr(v.value)
-        if v.type_ann:
+        if hasattr(v, '_destructure_vars'):
+            self.w(f"auto [{', '.join(v._destructure_vars)}] = {val};")
+        elif v.type_ann:
             self.w(f"{map_type(v.type_ann)} {v.name} = {val};")
         else:
             self.w(f"auto {v.name} = {val};")
@@ -2128,6 +2382,10 @@ class CodeGen:
         if isinstance(it, RangeLit):
             s = self.expr(it.start); e = self.expr(it.end)
             self.w(f"for (int {node.var} = {s}; {node.var} < {e}; ++{node.var}) {{")
+        elif isinstance(it, StrLit):
+            self.w(f"for (auto {node.var} : std::string({self.expr(it)})) {{")
+        elif len(node.vars) > 1:
+            self.w(f"for (auto [{', '.join(node.vars)}] : {self.expr(it)}) {{")
         else:
             self.w(f"for (auto {node.var} : {self.expr(it)}) {{")
         self.depth += 1
@@ -2193,6 +2451,19 @@ class CodeGen:
                 return map_type(node.name)
             return node.name
         if isinstance(node, BinOp):
+            op = node.op
+            lt = getattr(node.left, '_type', '')
+            rt = getattr(node.right, '_type', '')
+            lbase = _base_type(lt) if lt else ''
+            rbase = _base_type(rt) if rt else ''
+            both_primitive = (lt in ('int','float','bool','str','void') or not lt) and (rt in ('int','float','bool','str','void') or not rt)
+            op_methods = {'+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div', '%': 'op_mod'}
+            if not both_primitive and op in op_methods:
+                left = self.expr(node.left)
+                right = self.expr(node.right)
+                return f"{left}.{op_methods[op]}({right})"
+            if op == 'in':
+                return f"(contains({self.expr(node.right)}, {self.expr(node.left)}))"
             op = {'and':'&&','or':'||'}.get(node.op, node.op)
             return f"({self.expr(node.left)} {op} {self.expr(node.right)})"
         if isinstance(node, UnaryOp):
@@ -2205,6 +2476,12 @@ class CodeGen:
                     return f"Ok({args})"
                 if node.func.name == 'Err':
                     return f"Err({args})"
+                if node.func.name == 'list':
+                    return f"_ox_list_from_str({args})"
+                if node.func.name == 'sorted':
+                    return f"_ox_sorted({args})"
+                if node.func.name == 'enumerate':
+                    return f"_ox_enumerate({args})"
                 if '<' in node.func.name:
                     fn = map_type(node.func.name)
             return f"{fn}({args})"
@@ -2212,30 +2489,94 @@ class CodeGen:
             obj  = self.expr(node.obj)
             args = ', '.join(self.expr(a) for a in node.args)
             mname = map_type(node.name) if '<' in node.name else node.name
+            obj_type = getattr(node.obj, '_type', '')
+            obj_base = _base_type(obj_type) if obj_type else ''
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
                 return f"_oxm_{node.obj.name}::{mname}({args})"
-         if node.name == 'sorted':
-             # Expect optional `reverse` boolean argument
-             if args:
-                 return f"_ox_sorted({obj}, {args})"
-             else:
-                 return f"_ox_sorted({obj})"
-         if node.name in ('map','filter','reduce','for_each','each','any','all','find','sum','min','max','combinations','permutations','chunked','windowed','pairwise','reversed','cycle','take_while','drop_while'):
-                 return f"_ox_{node.name}({obj}{', ' + args if args else ''})"
-         return f"{obj}.{mname}({args})"
+            if node.name == 'sorted':
+                if args:
+                    return f"_ox_sorted({obj}, {args})"
+                return f"_ox_sorted({obj})"
+            # String method dispatch (checked before list chaining)
+            str_methods = {
+                'length': 'len', 'contains': 'str_contains',
+                'starts_with': 'starts_with', 'ends_with': 'ends_with',
+                'count': 'str_count', 'find': 'str_find',
+                'to_upper': 'to_upper', 'to_lower': 'to_lower',
+                'replace': 'str_replace', 'reverse': 'str_reverse',
+            }
+            if obj_base == 'str' and node.name in str_methods:
+                func = str_methods[node.name]
+                return f"{func}({obj}{', ' + args if args else ''})"
+            # List methods dispatch
+            list_methods = {
+                'length': 'len', 'contains': 'contains', 'count': '_ox_count',
+            }
+            if obj_base == 'List' and node.name in list_methods:
+                func = list_methods[node.name]
+                return f"{func}({obj}{', ' + args if args else ''})"
+            # List chaining methods
+            if node.name in ('map','filter','reduce','for_each','each','any','all',
+                             'find','sum','min','max','combinations','permutations',
+                             'chunked','windowed','pairwise','reversed','cycle',
+                             'take_while','drop_while'):
+                fn_args = []
+                for a in node.args:
+                    if isinstance(a, Attr) and isinstance(a.obj, Ident) and getattr(a.obj, '_type', '') == 'type':
+                        cls = a.obj.name
+                        mname = a.name
+                        fn_args.append(f"[](const {cls}& x) {{ return const_cast<{cls}&>(x).{mname}(); }}")
+                    else:
+                        fn_args.append(self.expr(a))
+                fn_args_str = ', '.join(fn_args)
+                return f"_ox_{node.name}({obj}{', ' + fn_args_str if fn_args_str else ''})"
+            return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
+            if node.name.isdigit():
+                obj_type = getattr(node.obj, '_type', '')
+                if obj_type.startswith('('):
+                    return f"std::get<{node.name}>({self.expr(node.obj)})"
             if node.name == 'value' and isinstance(node.obj, (Ident, FnCall, MethodCall)):
                 obj_type = getattr(node.obj, '_type', '')
                 if _base_type(obj_type) == 'Option':
                     return f"_ox_value({self.expr(node.obj)})"
             return f"{self.expr(node.obj)}.{node.name}"
         if isinstance(node, Index):
-            return f"{self.expr(node.obj)}[{self.expr(node.idx)}]"
+            obj = self.expr(node.obj)
+            obj_type = getattr(node.obj, '_type', '')
+            base = _base_type(obj_type) if obj_type else ''
+            _known_bracket_types = {'List','Map','Option','Result','Generator','str','int','float','bool','void','NdArray'}
+            is_user_class = bool(base and base not in _known_bracket_types and obj_type != 'void')
+            if isinstance(node.idx, SliceLit):
+                s = node.idx
+                start = self.expr(s.start) if s.start is not None else '0'
+                end = self.expr(s.end) if s.end is not None else '-1'
+                step = self.expr(s.step) if s.step is not None else '1'
+                if is_user_class:
+                    return f"{obj}.op_slice({start}, {end}, {step})"
+                if base == 'str':
+                    return f"_ox_str_slice({obj}, {start}, {end}, {step})"
+                return f"_ox_slice({obj}, {start}, {end}, {step})"
+            if is_user_class:
+                return f"{obj}.op_index({self.expr(node.idx)})"
+            return f"{obj}[{self.expr(node.idx)}]"
         if isinstance(node, TryOp):
             return f"_ox_try({self.expr(node.value)})"
         if isinstance(node, ListLit):
             elems = ', '.join(self.expr(e) for e in node.elems)
-            return '{' + elems + '}'
+            if not elems:
+                lt = getattr(node, '_type', '')
+                return f'{map_type(lt)}()' if lt else 'List<int>()'
+            return '_ox_make_list({' + elems + '})'
+        if isinstance(node, TupleLit):
+            elems = ', '.join(self.expr(e) for e in node.elems)
+            return f'std::make_tuple({elems})'
+        if isinstance(node, TernaryExpr):
+            return f"({self.expr(node.cond)} ? {self.expr(node.then_expr)} : {self.expr(node.else_expr)})"
+        if isinstance(node, LambdaExpr):
+            params = ', '.join(f'auto {p}' for p in node.params)
+            body = self.expr(node.body)
+            return f'[&]({params}) {{ return {body}; }}'
         if isinstance(node, StructLit):
             flds = ', '.join(f".{n}={self.expr(v)}" for n,v in node.fields)
             return f"{node.type_name}{{{flds}}}"
@@ -2255,6 +2596,8 @@ def _base_type(t: str) -> str:
 
 def _type_params(t: str) -> PyList[str]:
     if '<' not in t:
+        if t.startswith('('):
+            return [t]
         return []
     inner = t[t.index('<') + 1:t.rindex('>')]
     depth, cur, parts = 0, '', []
@@ -2367,6 +2710,10 @@ class TypeChecker:
             'map_set': ([('m', 'void'), ('k', 'void'), ('v', 'void')], 'void'),
             'list_insert': ([('v', 'void'), ('i', 'int'), ('x', 'void')], 'void'),
             'list_remove': ([('v', 'void'), ('i', 'int')], 'void'),
+            '_ox_count': ([('v', 'void'), ('x', 'void')], 'int'),
+            'str_count': ([('s', 'str'), ('sub', 'str')], 'int'),
+            '_ox_list_from_str': ([('s', 'str')], 'List<str>'),
+            '_ox_to_ndarray': ([('v', 'void')], 'NdArray'),
             'fs_exists': ([('path', 'str')], 'bool'),
             'fs_is_file': ([('path', 'str')], 'bool'),
             'fs_is_dir': ([('path', 'str')], 'bool'),
@@ -2465,6 +2812,22 @@ class TypeChecker:
             Severity.ERROR, msg, sp, code='E0308', notes=notes
         ))
 
+    def _split_tuple_types(self, inner: str) -> PyList[str]:
+        parts, depth, cur = [], 0, ''
+        for c in inner:
+            if c in '(<[':
+                depth += 1
+            elif c in ')>]':
+                depth -= 1
+            if c == ',' and depth == 0:
+                parts.append(cur.strip())
+                cur = ''
+            else:
+                cur += c
+        if cur.strip():
+            parts.append(cur.strip())
+        return parts
+
     def check(self, prog: Program) -> None:
         self._init_builtins()
         # First pass: collect all function and class signatures
@@ -2523,8 +2886,10 @@ class TypeChecker:
             lt = self._infer_type(node.left)
             rt = self._infer_type(node.right)
             op = node.op
-            if op in ('==', '!=', '<', '>', '<=', '>=', 'and', 'or'):
+            if op in ('==', '!=', '<', '>', '<=', '>=', 'and', 'or', 'in'):
                 if op in ('and', 'or') and lt == 'bool' and rt == 'bool':
+                    return 'bool'
+                if op == 'in':
                     return 'bool'
                 if op in ('==', '!='):
                     return 'bool'
@@ -2539,6 +2904,16 @@ class TypeChecker:
                     return lt if lt == rt else 'float'
                 if lt == 'str' and op == '+':
                     return 'str'
+                # Check operator overloading for class types
+                op_methods = {'+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div', '%': 'op_mod'}
+                if op in op_methods:
+                    method_name = op_methods[op]
+                    lbase = _base_type(lt)
+                    if lbase in self.classes:
+                        cls = self.classes[lbase]
+                        for m in cls.methods:
+                            if m.name == method_name:
+                                return m.return_type
                 self._type_error('int|float|str', f'{lt} {op} {rt}', node)
                 return lt
             return 'void'
@@ -2557,6 +2932,35 @@ class TypeChecker:
             if isinstance(fn_expr, Ident) and fn_expr.name == 'Err':
                 inner = self._infer_type(node.args[0])
                 return f'Result<void, {inner}>'
+            if isinstance(fn_expr, Ident) and fn_expr.name == 'list':
+                for a in node.args:
+                    self._infer_type(a)
+                return 'List<str>'
+            if isinstance(fn_expr, Ident) and fn_expr.name == 'sorted':
+                if node.args:
+                    arg_t = self._infer_type(node.args[0])
+                    base = _base_type(arg_t)
+                    if base == 'List':
+                        return arg_t
+                    if base == 'str':
+                        return 'List<str>'
+                    if arg_t.startswith('('):
+                        inner = arg_t[1:-1]
+                        elem_types = self._split_tuple_types(inner)
+                        elem = elem_types[0] if elem_types else 'void'
+                        return f'List<{elem}>'
+                return 'List<void>'
+            if isinstance(fn_expr, Ident) and fn_expr.name == 'enumerate':
+                if node.args:
+                    arg_t = self._infer_type(node.args[0])
+                    base = _base_type(arg_t)
+                    if base == 'List':
+                        params = _type_params(arg_t)
+                        elem = params[0] if params else 'void'
+                        return f'List<(int, {elem})>'
+                    if base == 'str':
+                        return 'List<(int, str)>'
+                return 'List<(int, void)>'
             if isinstance(fn_expr, Ident) and fn_expr.name in self.fns:
                 fn_name = fn_expr.name
                 params, ret, fn_node = self.fns[fn_name]
@@ -2569,9 +2973,11 @@ class TypeChecker:
                         self._infer_type(arg)
                     self.generic_params = old_generic
                     return 'void'  # print accepts any type
-                if len(node.args) != len(params):
+                # Count required params (handles both 3-element old format and 4-element with defaults)
+                min_args = sum(1 for p in params if len(p) < 4 or p[2] is None)
+                if len(node.args) > len(params) or len(node.args) < min_args:
                     self._error(
-                        f"function `{fn_name}` takes {len(params)} arguments but {len(node.args)} were given",
+                        f"function `{fn_name}` takes {len(params)} arguments ({min_args}-{len(params)}) but {len(node.args)} were given",
                         node, 'E0060',
                     )
                     self.generic_params = old_generic
@@ -2625,10 +3031,11 @@ class TypeChecker:
                 cls = self.classes[base]
                 for m in cls.methods:
                     if m.name == node.name:
-                        expected = len(m.params)  # self excluded from params
-                        if len(node.args) != expected:
+                        total = len(m.params)
+                        min_args = sum(1 for p in m.params if len(p) < 4 or p[2] is None)
+                        if len(node.args) > total or len(node.args) < min_args:
                             self._error(
-                                f"method `{node.name}` takes {expected} argument{'s' if expected != 1 else ''} but {len(node.args)} {('was' if len(node.args) == 1 else 'were')} given",
+                                f"method `{node.name}` takes {total} argument{'s' if total != 1 else ''} ({min_args}-{total}) but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
                                 node, 'E0060')
                         return m.return_type
                 self._error(f"no method named `{node.name}` found in class `{base}`", node, 'E0599')
@@ -2641,6 +3048,13 @@ class TypeChecker:
                         if isinstance(a, Ident) and a.name in self.fns:
                             _, ret, _ = self.fns[a.name]
                             return f'List<{ret}>'
+                        if isinstance(a, Attr) and isinstance(a.obj, Ident):
+                            cls_name = a.obj.name
+                            if cls_name in self.classes:
+                                cls = self.classes[cls_name]
+                                for m in cls.methods:
+                                    if m.name == a.name:
+                                        return f'List<{m.return_type}>'
                     return f'List<{elem_type}>'
                 if node.name == 'filter':
                     return f'List<{elem_type}>'
@@ -2662,6 +3076,26 @@ class TypeChecker:
                     return f'List<{elem_type}>'
                 if node.name in ('take_while', 'drop_while'):
                     return f'List<{elem_type}>'
+                if node.name == 'length':
+                    return 'int'
+                if node.name == 'contains':
+                    return 'bool'
+                if node.name == 'count':
+                    return 'int'
+                return 'void'
+            # Built-in str methods
+            if base == 'str':
+                if node.name == 'length':
+                    return 'int'
+                if node.name in ('contains', 'starts_with', 'ends_with'):
+                    return 'bool'
+                if node.name == 'count':
+                    return 'int'
+                if node.name == 'find':
+                    return 'Option<int>'
+                if node.name in ('to_upper', 'to_lower', 'reverse', 'replace'):
+                    return 'str'
+                return 'void'
             return 'void'
         if isinstance(node, VarDecl):
             if node.type_ann:
@@ -2683,11 +3117,23 @@ class TypeChecker:
         if isinstance(node, Attr):
             obj_t = self._infer_type(node.obj)
             base = _base_type(obj_t)
+            if obj_t.startswith('(') and node.name.isdigit():
+                # Tuple element access: t.0, t.1, etc.
+                inner = obj_t[1:-1]
+                elems = self._split_tuple_types(inner)
+                idx = int(node.name)
+                if 0 <= idx < len(elems):
+                    return elems[idx]
+                self._error(f"tuple index {idx} out of range (has {len(elems)} elements)", node, 'E0560')
+                return 'void'
             if base in self.classes:
                 cls = self.classes[base]
                 for fn, ft in cls.fields:
                     if fn == node.name:
                         return ft
+                for m in cls.methods:
+                    if m.name == node.name:
+                        return m.return_type
                 self._error(f"no field named `{node.name}` on class `{base}`", node, 'E0560')
                 return 'void'
             if base == 'Option' and node.name == 'value':
@@ -2696,8 +3142,19 @@ class TypeChecker:
             return 'void'
         if isinstance(node, Index):
             obj_t = self._infer_type(node.obj)
-            self._infer_type(node.idx)
             base = _base_type(obj_t)
+            if isinstance(node.idx, SliceLit):
+                if base == 'List':
+                    return obj_t
+                if base == 'str':
+                    return 'str'
+                if base in self.classes:
+                    cls = self.classes[base]
+                    for m in cls.methods:
+                        if m.name == 'op_slice':
+                            return m.return_type
+                return 'void'
+            self._infer_type(node.idx)
             if base == 'List':
                 params = _type_params(obj_t)
                 return params[0] if params else 'void'
@@ -2706,6 +3163,13 @@ class TypeChecker:
             if base == 'Map':
                 params = _type_params(obj_t)
                 return params[1] if len(params) > 1 else 'void'
+            if base in self.classes:
+                cls = self.classes[base]
+                for m in cls.methods:
+                    if m.name == 'op_index':
+                        return m.return_type
+            if base and base not in _PRIMITIVE_TYPES and base not in _CONTAINER_TYPES:
+                return 'void'
             self._type_error('List|str|Map', obj_t, node.obj)
             return 'void'
         if isinstance(node, StructLit):
@@ -2716,8 +3180,24 @@ class TypeChecker:
                 return node.type_name
             self._error(f"no class named `{node.type_name}`", node, 'E0412')
             return node.type_name
+        if isinstance(node, TupleLit):
+            elem_types = [self._infer_type(e) for e in node.elems]
+            return f"({', '.join(elem_types)})"
+        if isinstance(node, LambdaExpr):
+            return 'void'
+        if isinstance(node, TernaryExpr):
+            ct = self._infer_type(node.cond)
+            if ct != 'bool':
+                self._error(f"expected bool cond, got `{ct}`", node.cond, 'E0020')
+            tt = self._infer_type(node.then_expr)
+            ec = self._infer_type(node.else_expr)
+            if not self._is_compatible(tt, ec):
+                self._type_error(tt, ec, node.else_expr)
+            return tt
         if isinstance(node, RangeLit):
             return 'List<int>'
+        if isinstance(node, SliceLit):
+            return 'void'
         return 'void'
 
     def _is_compatible(self, found: str, expected: str) -> bool:
@@ -2742,12 +3222,44 @@ class TypeChecker:
                 Severity.WARNING, "unreachable statement",
                 sp, code='W0003'))
         if isinstance(node, VarDecl):
+            if hasattr(node, '_destructure_vars'):
+                # Tuple destructuring: let (a, b, c) = expr
+                val_t = self._infer_type(node.value)
+                if node.type_ann:
+                    if not self._is_compatible(val_t, node.type_ann):
+                        self._type_error(node.type_ann, val_t, node.value)
+                    if node.type_ann.startswith('('):
+                        inner = node.type_ann[1:-1]
+                        ann_types = self._split_tuple_types(inner)
+                        for i, vn in enumerate(node._destructure_vars):
+                            if i < len(ann_types):
+                                self._declare_var(vn, ann_types[i], node)
+                            else:
+                                self._declare_var(vn, 'void', node)
+                    else:
+                        for vn in node._destructure_vars:
+                            self._declare_var(vn, 'void', node)
+                elif val_t.startswith('('):
+                    inner = val_t[1:-1]
+                    elem_types = self._split_tuple_types(inner)
+                    for i, vn in enumerate(node._destructure_vars):
+                        if i < len(elem_types):
+                            self._declare_var(vn, elem_types[i], node)
+                        else:
+                            self._declare_var(vn, 'void', node)
+                else:
+                    for vn in node._destructure_vars:
+                        self._declare_var(vn, 'void', node)
+                return
             val_t = self._infer_type(node.value)
             resolved = node.type_ann or val_t
             if node.type_ann:
                 if not self._is_compatible(val_t, node.type_ann):
                     self._type_error(node.type_ann, val_t, node.value)
                 self._declare_var(node.name, node.type_ann, node)
+                # Propagate annotation type to empty list literals for correct codegen
+                if isinstance(node.value, ListLit) and not node.value.elems:
+                    node.value._type = node.type_ann
             else:
                 self._declare_var(node.name, val_t, node)
             if hasattr(node, 'name_node'):
@@ -2799,9 +3311,25 @@ class TypeChecker:
             elif _base_type(iter_t) in _CONTAINER_TYPES:
                 params = _type_params(iter_t)
                 var_type = params[0] if params else 'void'
+            elif _base_type(iter_t) == 'str':
+                var_type = 'str'
             else:
                 var_type = 'void'
-            self.vars[-1][node.var] = var_type
+            if len(node.vars) > 1:
+                # Tuple destructuring in for loop
+                if var_type.startswith('('):
+                    inner = var_type[1:-1]
+                    elem_types = self._split_tuple_types(inner)
+                    for i, vn in enumerate(node.vars):
+                        if i < len(elem_types):
+                            self.vars[-1][vn] = elem_types[i]
+                        else:
+                            self.vars[-1][vn] = 'void'
+                else:
+                    for vn in node.vars:
+                        self.vars[-1][vn] = var_type
+            else:
+                self.vars[-1][node.var] = var_type
             for s in node.body:
                 self._check_stmt(s)
             self._pop_scope()
@@ -2836,8 +3364,9 @@ class TypeChecker:
             for p in node.params:
                 pname, ptype = p[0], p[1]
                 self.vars[-1][pname] = ptype
-                if len(p) >= 3:
-                    p[2]._type = ptype
+                # p[2]=default, p[3]=name_node
+                if len(p) >= 4 and p[3] is not None:
+                    p[3]._type = ptype
             old_cls = self.in_class
             if any(p[0] == 'self' for p in node.params):
                 self.in_class = self.in_class or 'Self'

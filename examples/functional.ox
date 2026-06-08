@@ -26,6 +26,8 @@ fn lt4(x: int) -> bool {
     return x < 4;
 }
 
+fn gt8(x: int) -> bool { return x > 8; }
+
 fn main() {
     print("═══ Functional Chaining Demo ═══");
     print("");
@@ -76,23 +78,21 @@ fn main() {
 	print("");
 
 	// Sorted examples
-	print("numbers.sorted():");
-	let sorted_asc = numbers.sorted();
-	print(sorted_asc); // [1, 2, 3, 4, 5, 6]
+    print("numbers.sorted():")
+    let sorted_asc = numbers.sorted()
+    print(sorted_asc)
 
-	print("numbers.sorted(reverse=true):");
-	let sorted_desc = numbers.sorted(reverse=true);
-	print(sorted_desc); // [6, 5, 4, 3, 2, 1]
+    print("numbers.map(dbl).sorted():")
+    let mapped_sorted = numbers.map(dbl).sorted()
+    print(mapped_sorted)
 
-	// Chained: filter -> map -> sorted
-	print("Chained: numbers.filter(is_odd).map(dbl).sorted(reverse=true):");
-	let odd_doubled_sorted = numbers.filter(is_odd).map(dbl).sorted(reverse=true);
-	print(odd_doubled_sorted); // [12, 8, 4] (3*2=6,5*2=10, wait: odds are 1,3,5 -> doubled 2,6,10 sorted desc = [10,6,2])
+    print("numbers.filter(is_even).sorted():")
+    let filtered_sorted = numbers.filter(is_even).sorted()
+    print(filtered_sorted)
 
-	// Chained: map -> filter -> sorted
-	print("Chained: numbers.map(dbl).filter(x => x > 8).sorted():");
-	let mapped_filtered_sorted = numbers.map(dbl).filter(fn(x) { return x > 8; }).sorted();
-	print(mapped_filtered_sorted); // [10, 8] (2*2=4>8?no,3*2=6>8?no,4*2=8 not>8,5*2=10>8yes,6*2=12>8yes -> sorted asc = [10,12])
+    print("Chained: numbers.map(dbl).filter(gt8).sorted():")
+    let chain = numbers.map(dbl).filter(gt8).sorted()
+    print(chain)
 
 	print("");
 	print("═══ Done ═══");

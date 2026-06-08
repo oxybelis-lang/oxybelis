@@ -8,6 +8,7 @@ node_modules/
 # Generated transpiler output
 *.exe
 *.o
+*.obj
 *.cpp
 
 # Extension compiled output

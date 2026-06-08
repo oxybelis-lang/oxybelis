@@ -1,6 +1,6 @@
 # Oxybelis Language Specification
 
-**Version:** 0.3.4  
+**Version:** 0.4.0  
 **Status:** Draft  
 
 ---
@@ -459,11 +459,31 @@ On `Result<T, E>`: returns `T` or aborts if `Err`.
 
 ### 4.12 If-Else Expression (ternary)
 
-Not yet implemented. Use `if`/`else` as statements.
+```oxybelis
+let y = 42 if x > 3 else 0
+print("even" if x % 2 == 0 else "odd")
+```
+
+The ternary evaluates to `then_expr` if `cond` is true, otherwise `else_expr`. Both branches must have compatible types. The condition must be `bool`.
 
 ### 4.13 Lambda Expressions
 
-Not yet implemented. Use named function references for higher-order calls.
+```oxybelis
+let double = |x| x * 2
+list.map(|x| x * x)
+list.filter(|x| x > 0)
+```
+
+Lambdas use Rust-style syntax: `|params| expr`. Multiple parameters: `|a, b, c| a + b + c`. They generate C++ stateless lambdas `[&](auto params) { return body; }` and work with all list chaining methods (`map`, `filter`, `reduce`, `any`, `all`, `find`, `for_each`, `take_while`, `drop_while`).
+
+### 4.14 `in` Operator
+
+```oxybelis
+let found = 3 in [1, 2, 3, 4, 5]   // true
+let missing = 10 in my_list         // false
+```
+
+The `in` operator returns `bool` and generates `contains(container, element)`. It works with any type that has a `contains` function.
 
 ---
 
@@ -472,10 +492,12 @@ Not yet implemented. Use named function references for higher-order calls.
 ### 5.1 Variable Declaration
 
 ```oxybelis
-let name = value          // immutable, inferred type
-let name: Type = value    // immutable, explicit type
-var name = value          // mutable, inferred type
-var name: Type = value    // mutable, explicit type
+let name = value              // immutable, inferred type
+let name: Type = value        // immutable, explicit type
+var name = value              // mutable, inferred type
+var name: Type = value        // mutable, explicit type
+let (a, b) = tuple_expr       // tuple destructuring
+let (a, b): (int, str) = ...  // tuple destructuring with type annotation
 ```
 
 `let` bindings cannot be reassigned. `var` bindings can be reassigned with `=`.
@@ -618,6 +640,16 @@ fn name(param1: Type1, param2: Type2) -> ReturnType {
 ```
 
 - Parameters are always passed by value.
+- Parameters can have default values — omitted callers use the default:
+  ```oxybelis
+  fn greet(name: str, greeting: str = "Hello") -> void {
+      print(greeting + ", " + name)
+  }
+  greet("Alice")          // prints "Hello, Alice"
+  greet("Bob", "Hi")      // prints "Hi, Bob"
+  ```
+  A param with a default makes all subsequent params also required to have defaults.
+  Both the type checker and codegen enforce the correct argument count range.
 - The return type can be omitted for `void` functions.
 - Generic type parameters:
 
@@ -876,7 +908,7 @@ Available without any import:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `print(v)` | `T → void` | Print value to stdout |
+| `print(v, ...)` | `T... → void` | Print one or more values space-separated to stdout |
 | `read_file(path)` | `str → str` | Read entire file |
 | `read_lines(path)` | `str → List<str>` | Read file as lines |
 | `write_file(path, contents)` | `str × str → void` | Write to file |
@@ -966,7 +998,7 @@ g++ -std=c++20 -O2 file.cpp -o file.exe
 Every generated `.cpp` file includes a runtime header containing:
 - Type aliases (`List`, `Map`, `Option`)
 - Helper functions (`Some`, `None`, `Ok`, `Err`, `_ox_try`, `_ox_value`)
-- `print()` overloads for all types
+- `print()` variadic overload (1+ args, space-separated) plus specialized overloads for all types
 - `str()` conversion functions for all types
 - Functional chaining functions (`_ox_map`, `_ox_filter`, etc.)
 - Iterator toolkit functions (`_ox_combinations`, `_ox_chunked`, etc.)
@@ -1166,6 +1198,7 @@ identifier      = (letter | '_') { letter | digit | '_' }
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.4.0 | 2026-06-08 | Tuples (destructuring, types, `sorted`), lambdas (`\|params\|`), ternary expressions, `in` operator, default parameter values, variadic `print`, LSP recursive symbol completion |
 | 0.3.4 | 2026-06-06 | Operator overloading, Python-style slicing `[start:end:step]`, NdArray slice support, ellipsis `...` for multidimensional indexing |
 | 0.3.3 | 2026-06-05 | LSP markdown docs, function token highlighting, formatter blank-line preservation, cleanup |
 | 0.3.2 | 2026-06-04 | Generators, yield, itertools, examples, string stdlib, self-hosting compiler |

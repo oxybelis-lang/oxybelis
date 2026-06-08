@@ -72,6 +72,12 @@ oxybelis examples/basics.ox --check  # type-check only (Python version)
 
 - **Python-inspired syntax** with `{}` blocks
 - **Static typing:** `int`, `float`, `bool`, `str`, `void`, generics
+- **Tuple types:** `(int, str)`, destructuring, type annotations
+- **Lambda expressions:** `|params| expr` syntax
+- **Ternary expressions:** `x if cond else y`
+- **`in` operator:** `x in list` → `bool`
+- **Default parameter values:** `fn f(a: int = 5)`
+- **Variadic `print`:** `print(a, b, c)` space-separated
 - **Generators:** `yield` keyword with state-machine transpilation — no C++20 coroutines needed. `Generator<T>` supports range-for iteration.
 - **Functional chaining:** `.map()`, `.filter()`, `.reduce()`, `.any()`, `.all()`, `.find()`, `.sum()`, `.min()`, `.max()`, `.for_each()`
 - **Iterator toolkit:** `.combinations(k)`, `.permutations(k)`, `.chunked(n)`, `.windowed(n)`, `.pairwise()`, `.reversed()`, `.cycle(n)`, `.take_while(pred)`, `.drop_while(pred)`

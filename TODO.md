@@ -44,10 +44,10 @@
 - [ ] Pretty-printing with indentation control
 
 ### Standard library — I/O
-- [ ] `input()` / `read_line()` → `str`
+- [x] `input()` / `read_line()` → `str`
 - [ ] `eprint(msg)` / `eprintln(msg)` → stderr output
 - [ ] `append_file(path, content)` → file append mode
-- [ ] `read_file_lines(path)` → `List<str>` (already exists as `read_lines`)
+- [x] `read_file_lines(path)` → `List<str>` (already exists as `read_lines`)
 - [ ] `temp_dir()` / `temp_file()` → path utilities
 
 ### Standard library — DateTime
@@ -57,18 +57,7 @@
 - [ ] Time duration / arithmetic
 
 ### Documentation
-- [ ] **SPEC.md** — complete language specification:
-  - Lexical structure (comments, identifiers, keywords, literals, operators)
-  - Syntax (EBNF grammar for every construct)
-  - Type system (primitive types, generic types, type inference rules)
-  - Expressions (all operator precedence and associativity)
-  - Statements and declarations
-  - Functions and closures
-  - Classes and methods
-  - Modules and imports
-  - Standard library reference
-  - C++ runtime specification
-  - Memory model and value semantics
+- [x] **SPEC.md** — language specification up to date
 - [ ] **TUTORIAL.md** — "Learn Oxybelis in 30 minutes" step-by-step
 - [ ] **Doc comments** — `///` and `/** */` comment parsing and extraction
 - [ ] **API reference** — generated docs for `oxlib/` modules
@@ -87,19 +76,21 @@
 
 ### Language features
 - [ ] **Type aliases** — `type UserId = int`
-- [ ] **Lambda expressions** — `|x, y| x + y`
+- [x] **Lambda expressions** — `|x, y| x + y`
+- [x] **Ternary expressions** — `x if cond else y`
+- [x] **Tuple types** — `(int, str)` return types, destructuring, type annotations
+- [x] **Default parameter values** — `fn foo(a: int, b: int = 10)`
+- [x] **`in` operator** — `x in list` → `bool`
+- [x] **Variadic `print`** — `print(a, b, c)` space-separated
 - [ ] **Enums / sum types** — `enum Option<T> { None, Some(T) }` with match destructuring
-- [ ] **Ternary expressions** — `x if cond else y`
 - [ ] **List comprehensions** — `[x * 2 for x in list if x > 0]`
-- [ ] **Operator overloading** — user-defined `+`, `==`, etc.
-- [ ] **Tuple types** — `(int, str)` return types, destructuring
 - [ ] **`Set<T>`** built-in type
 
 ### Tooling
 - [ ] **LSP: Go to definition**
 - [ ] **LSP: Find references**
 - [ ] **LSP: Rename symbol**
-- [ ] **LSP: Signature help** (parameter hints)
+- [ ] **LSP: Signature help for user-defined functions**
 - [ ] **LSP: Document symbols** (outline)
 - [ ] **LSP: Code actions** (quick-fixes)
 - [ ] **LSP: Incremental document sync** (TextDocumentSyncKind.Incremental)
@@ -154,10 +145,15 @@
 
 ---
 
-## Current Focus (v0.3.4 → v0.4.0)
+## Current Focus (v0.4.0 → v0.5.0)
 
-1. [x] **Self-hosting compiler parity** — TypeChecker in `compiler.ox`, `--check` passes cleanly, bootstrap verified
-2. [x] **SPEC.md** — language specification document complete
-3. [ ] **Bootstrap hardening** — verify generator state-machine codegen works in self-hosted output; test self-hosted compile of `oxlib/` modules; fight-test with real-world `.ox` files
-4. [ ] **LSP features** — go-to-definition, find references, rename
-5. [ ] **Math module discussion** — Eigen vs MKL vs custom
+1. [x] **Tuples** — destructuring, type annotations, `sorted` on tuples
+2. [x] **Lambdas** — `|params| expr` syntax with auto type deduction
+3. [x] **Ternary** — `x if cond else y` with backtrack parsing
+4. [x] **`in` operator** — `x in list` generates `contains(list, x)`
+5. [x] **Default parameter values** — `fn f(a: int = 5)`
+6. [x] **Variadic `print`** — `print(a, b, c)` space-separated
+7. [x] **LSP recursive symbol completion** — suggests vars inside fn bodies
+8. [ ] **Bootstrap hardening** — verify generator state-machine codegen works in self-hosted output; test self-hosted compile of `oxlib/` modules; fight-test with real-world `.ox` files
+9. [ ] **LSP features** — go-to-definition, find references, rename
+10. [ ] **Math module discussion** — Eigen vs MKL vs custom

@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 
-VERSION = '0.3.4'
+VERSION = '0.4.0'
 
 SCRIPTS = [
     ('oxybelis', 'oxybelis.py'),

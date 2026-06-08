@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Oxybelis – a statically-typed, Python-inspired language that transpiles to C++",
   "homepage": "https://github.com/oxybelis-lang/oxybelis",
   "license": "GPL-3.0-only",

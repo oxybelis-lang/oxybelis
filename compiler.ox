@@ -1558,7 +1558,11 @@ class CodeGen {
                 return "_oxm_" + obj_str + "::" + mname + "(" + as + ")"
             }
             // Built-in list chaining methods
-            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" or node.name == "combinations" or node.name == "permutations" or node.name == "chunked" or node.name == "windowed" or node.name == "pairwise" or node.name == "reversed" or node.name == "cycle" or node.name == "take_while" or node.name == "drop_while" {
+            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" or node.name == "combinations" or node.name == "permutations" or node.name == "chunked" or node.name == "windowed" or node.name == "pairwise" or node.name == "reversed" or node.name == "cycle" or node.name == "take_while" or node.name == "drop_while" or node.name == "sorted" {
+                if node.name == "sorted" {
+                    if as != "" { return "_ox_sorted(" + obj_str + ", " + as + ")" }
+                    return "_ox_sorted(" + obj_str + ")"
+                }
                 if as != "" { return "_ox_" + node.name + "(" + obj_str + ", " + as + ")" }
                 return "_ox_" + node.name + "(" + obj_str + ")"
             }

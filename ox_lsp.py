@@ -29,7 +29,9 @@ _log(f'cwd={os.getcwd()!r}')
 _log(f'__file__={__file__!r}')
 
 try:
-    from oxybelis import Lexer, Parser, TypeChecker, compile_source, TT, FnDef, ClassDef, VarDecl, ImportStmt, Ident, ModuleResolver
+    from oxybelis import (Lexer, Parser, TypeChecker, compile_source, TT,
+                          FnDef, ClassDef, VarDecl, ImportStmt, Ident, ModuleResolver,
+                          IfStmt, ForStmt, WhileStmt, MatchStmt)
     _log('imported oxybelis OK')
 except Exception as e:
     _log(f'IMPORT ERROR oxybelis: {e}')
@@ -837,7 +839,7 @@ def handle_initialize(msg: LSPMessage):
         },
         'serverInfo': {
             'name': 'ox-lsp',
-            'version': '0.2.1',
+            'version': '0.4.0',
         }
     })
 
@@ -887,6 +889,35 @@ def handle_hover(msg: LSPMessage):
     conn.send_response(msg.id, result)
 
 
+def _collect_symbols(stmts, seen, items):
+    """Recursively collect FnDef, ClassDef, and VarDecl from statement lists."""
+    for s in stmts:
+        if isinstance(s, FnDef) and s.name not in seen:
+            seen.add(s.name)
+            items.append({'label': s.name, 'kind': 3, 'detail': 'function', 'insertText': s.name})
+            _collect_symbols(s.body, seen, items)
+        elif isinstance(s, ClassDef) and s.name not in seen:
+            seen.add(s.name)
+            items.append({'label': s.name, 'kind': 7, 'detail': 'class', 'insertText': s.name})
+            for m in s.methods:
+                _collect_symbols(m.body, seen, items)
+        elif isinstance(s, VarDecl) and s.name not in seen:
+            seen.add(s.name)
+            items.append({'label': s.name, 'kind': 6, 'detail': s.type_ann or 'variable', 'insertText': s.name})
+        elif isinstance(s, IfStmt):
+            _collect_symbols(s.then_body, seen, items)
+            for _, eb in s.elif_clauses:
+                _collect_symbols(eb, seen, items)
+            if s.else_body:
+                _collect_symbols(s.else_body, seen, items)
+        elif isinstance(s, ForStmt):
+            _collect_symbols(s.body, seen, items)
+        elif isinstance(s, WhileStmt):
+            _collect_symbols(s.body, seen, items)
+        elif isinstance(s, MatchStmt):
+            for _, arm_body in s.arms:
+                _collect_symbols(arm_body, seen, items)
+
 def handle_completion(msg: LSPMessage):
     items = list(_KEYWORD_COMPLETIONS)
     uri = msg.params.get('textDocument', {}).get('uri', '')
@@ -897,31 +928,7 @@ def handle_completion(msg: LSPMessage):
             parser = Parser(tokens, doc.source)
             ast = parser.parse()
             seen = {c['label'] for c in _KEYWORD_COMPLETIONS}
-            for s in ast.stmts:
-                if isinstance(s, FnDef) and s.name not in seen:
-                    seen.add(s.name)
-                    items.append({
-                        'label': s.name,
-                        'kind': 3,
-                        'detail': 'function',
-                        'insertText': s.name,
-                    })
-                if isinstance(s, ClassDef) and s.name not in seen:
-                    seen.add(s.name)
-                    items.append({
-                        'label': s.name,
-                        'kind': 7,
-                        'detail': 'class',
-                        'insertText': s.name,
-                    })
-                if isinstance(s, VarDecl) and s.name not in seen:
-                    seen.add(s.name)
-                    items.append({
-                        'label': s.name,
-                        'kind': 6,
-                        'detail': s.type_ann or 'variable',
-                        'insertText': s.name,
-                    })
+            _collect_symbols(ast.stmts, seen, items)
         except Exception:
             pass
     items.extend(_MATH_COMPLETIONS)
