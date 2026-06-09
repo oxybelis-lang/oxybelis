@@ -939,6 +939,71 @@ _COMPLETION_RANKS: dict[int, int] = {
     14: 30,  # Keyword
 }
 
+_MODULE_CACHE: dict[str, dict[str, dict]] = {}
+
+def _get_oxlib_dir() -> str:
+    base = os.path.dirname(os.path.abspath(__file__))
+    oxlib = os.path.join(base, 'oxlib')
+    if os.path.isdir(oxlib):
+        return oxlib
+    return ''
+
+def _load_module_functions(mod_name: str) -> dict[str, dict]:
+    if mod_name in _MODULE_CACHE:
+        return _MODULE_CACHE[mod_name]
+    oxlib = _get_oxlib_dir()
+    if not oxlib:
+        _log(f'oxlib dir not found')
+        return {}
+    filepath = os.path.join(oxlib, f'{mod_name}.ox')
+    if not os.path.isfile(filepath):
+        _log(f'module file not found: {filepath}')
+        return {}
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            src = f.read()
+        tokens = Lexer(src).tokenize()
+        parser = Parser(tokens, src)
+        ast = parser.parse()
+        functions: dict[str, dict] = {}
+        for s in ast.stmts:
+            if isinstance(s, FnDef):
+                params_str = ', '.join(f'{p[0]}: {p[1]}' for p in s.params)
+                ret = s.return_type or 'void'
+                functions[s.name] = {
+                    'label': s.name,
+                    'kind': 3,
+                    'detail': f'{mod_name} function',
+                    'insertText': f'{s.name}()',
+                    'params': params_str,
+                    'return_type': ret,
+                }
+            if isinstance(s, ClassDef):
+                functions[s.name] = {
+                    'label': s.name,
+                    'kind': 7,
+                    'detail': f'{mod_name} class',
+                    'insertText': s.name,
+                }
+        _MODULE_CACHE[mod_name] = functions
+        _log(f'Loaded {len(functions)} items from module {mod_name}')
+        return functions
+    except Exception as e:
+        _log(f'Error loading module {mod_name}: {e}')
+        return {}
+
+def _find_imported_modules(stmts) -> list[str]:
+    modules = []
+    for s in stmts:
+        if isinstance(s, ImportStmt):
+            modules.append(s.path[0])
+        if isinstance(s, FnDef):
+            modules.extend(_find_imported_modules(s.body))
+        if isinstance(s, ClassDef):
+            for m in s.methods:
+                modules.extend(_find_imported_modules(m.body))
+    return modules
+
 _LIST_METHODS: dict[str, dict] = {
     'push':           {'kind': 3, 'detail': 'List method', 'insertText': 'push()'},
     'pop':            {'kind': 3, 'detail': 'List method', 'insertText': 'pop()'},
@@ -1158,14 +1223,29 @@ def handle_completion(msg: LSPMessage):
         else:
             var_type = ''
             ast = None
+            imported = []
             try:
                 tokens = Lexer(doc.source).tokenize()
                 parser = Parser(tokens, doc.source)
                 ast = parser.parse()
                 var_type = _find_var_type(ast, var_name)
-                _log(f'AST lookup: var={var_name!r} type={var_type!r}')
+                imported = _find_imported_modules(ast.stmts)
+                _log(f'AST lookup: var={var_name!r} type={var_type!r} imported={imported}')
             except Exception:
-                _log(f'AST parse failed, trying text lookup')
+                _log(f'AST parse failed, trying text/fallback')
+            if not imported and not var_type:
+                for m in re.finditer(r'\bimport\s+(\w+)', doc.source):
+                    imported.append(m.group(1))
+            if var_name in imported:
+                mod_fns = _load_module_functions(var_name)
+                for name, meta in mod_fns.items():
+                    if name.startswith(prefix):
+                        items.append({
+                            'label': meta['label'],
+                            'kind': meta['kind'],
+                            'detail': meta['detail'],
+                            'insertText': meta['insertText'],
+                        })
             if not var_type:
                 var_type = _find_var_type_text(doc.source, var_name)
                 _log(f'Text lookup: var={var_name!r} type={var_type!r}')
