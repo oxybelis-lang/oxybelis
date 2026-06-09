@@ -1,6 +1,6 @@
 # Oxybelis Language Specification
 
-**Version:** 0.4.0  
+**Version:** 0.5.0  
 **Status:** Draft  
 
 ---
@@ -837,9 +837,13 @@ Available without any import:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_int(s)` | `str → int` | Parse string to integer |
-| `to_float(s)` | `str → float` | Parse string to float |
-| `str(v)` | `T → str` | Convert value to string |
+| `int(x)` | `T → int` | Convert to integer (`static_cast<int>`) |
+| `float(x)` | `T → float` | Convert to float (`static_cast<double>`) |
+| `bool(x)` | `T → bool` | Convert to boolean (`static_cast<bool>`) |
+| `to_int(s)` | `str → int` | Parse decimal string to integer |
+| `to_float(s)` | `str → float` | Parse decimal string to float |
+| `parse_int(s, base)` | `str × int → int` | Parse string to integer with base (2–36) |
+| `str(v)` | `T → str` | Convert value to string (floats strip trailing zeros) |
 | `to_upper(s)` | `str → str` | Uppercase string |
 | `to_lower(s)` | `str → str` | Lowercase string |
 
@@ -866,6 +870,7 @@ Available without any import:
 | `is_digit(c)` | `str → bool` | Single character is digit |
 | `is_alpha(c)` | `str → bool` | Single character is alphabetic |
 | `is_alnum(c)` | `str → bool` | Single character is alphanumeric |
+| `str_format(fmt, args)` | `str × List<str> → str` | Format string with `{}` replacement and format specs: `{:.Nf}` (float), `{:x}`/`{:X}` (hex), `{:o}` (octal), `{:b}` (binary), `{:e}`/`{:E}` (scientific), `{:>N}`/`{:<N}`/`{:^N}` (alignment) |
 
 #### Math
 
@@ -1103,10 +1108,19 @@ oxybelis examples/basics.ox --highlight  # syntax highlight & exit (Python versi
 
 `ox-lsp` provides:
 - Diagnostics on open/change/save
-- Semantic token highlighting
-- Hover type information
-- Completions
-- Document formatting
+- Semantic token highlighting (keywords, types, functions, variables, strings, numbers, comments)
+- Hover type information with inferred types
+- Context-aware completions:
+  - Keywords, builtins, types, constructors
+  - User-defined functions, classes, and variables (recursive scope search)
+  - Member methods/fields for `List`, `Map`, `str`, `Option` with type-specific dictionaries
+  - All `math.*` functions with documentation
+  - Class methods and fields for user-defined types (recursive search into all scopes)
+  - Module function completions (`json.*`, `fs.*`, etc.) via import resolution
+  - Snippet-style function completions (`fn_name($1)`) with cursor placement
+  - Completion sorting/ranking (functions → variables → classes → types → keywords)
+- Signature help with parameter info for documented builtins
+- Document formatting (via `ox_fmt.py` formatter)
 
 ### 12.5 Formatter
 
@@ -1198,6 +1212,7 @@ identifier      = (letter | '_') { letter | digit | '_' }
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 0.5.0 | 2026-06-09 | `int()`/`float()`/`bool()` explicit casts, `parse_int(s, base)` base-N parsing, `str_format` with format specs (`:.Nf`, `:x`, `:b`, `:o`, `:e`, alignment), `str(double)` strips trailing zeros, LSP snippet completions, context-aware member access (List/Map/str/Option/math), user-defined class member completion, module import resolution (`json.*`), documentation in hover/completions, completion ranking/prioritization |
 | 0.4.0 | 2026-06-08 | Tuples (destructuring, types, `sorted`), lambdas (`\|params\|`), ternary expressions, `in` operator, default parameter values, variadic `print`, LSP recursive symbol completion |
 | 0.3.4 | 2026-06-06 | Operator overloading, Python-style slicing `[start:end:step]`, NdArray slice support, ellipsis `...` for multidimensional indexing |
 | 0.3.3 | 2026-06-05 | LSP markdown docs, function token highlighting, formatter blank-line preservation, cleanup |

@@ -1528,6 +1528,15 @@ class CodeGen {
             if func_node.kind == "Ident" and func_node.name == "Err" {
                 return "Err(" + self.expr(node.args[0]) + ")"
             }
+            if func_node.kind == "Ident" and func_node.name == "int" {
+                return "static_cast<int>(" + self.expr(node.args[0]) + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "float" {
+                return "static_cast<double>(" + self.expr(node.args[0]) + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "bool" {
+                return "static_cast<bool>(" + self.expr(node.args[0]) + ")"
+            }
             var as: str = ""
             var i = 0
             while i < len(node.args) {
@@ -2250,6 +2259,7 @@ class CodeGen {
             self.w("#include <cmath>")
             self.w("#include <stdexcept>")
             self.w("#include <sstream>")
+            self.w("#include <iomanip>")
             self.w("#include <fstream>")
             self.w("#include <random>")
             self.w("#include <cstdlib>")
@@ -2600,6 +2610,7 @@ self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
             self.w("")
             self.w("inline int to_int(const std::string& s) { return std::stoi(s); }")
             self.w("inline double to_float(const std::string& s) { return std::stod(s); }")
+            self.w("inline int parse_int(const std::string& s, int base) { return std::stoi(s, nullptr, base); }")
             self.w("")
             self.w("// ── math ───")
             self.w("using std::sqrt; using std::abs; using std::pow;")
@@ -2808,6 +2819,76 @@ self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
             self.w("if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') {")
             self.depth = self.depth + 1
             self.w("r += (ai < args.size()) ? args[ai++] : std::string(); ++i;")
+            self.depth = self.depth - 1
+            self.w("} else if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == ':') {")
+            self.depth = self.depth + 1
+            self.w("size_t end = fmt.find('}', i + 2);")
+            self.w("if (end == std::string::npos) { r += fmt[i]; continue; }")
+            self.w("std::string spec = fmt.substr(i + 2, end - i - 2);")
+            self.w("std::string val = (ai < args.size()) ? args[ai++] : std::string();")
+            self.w("char align = 0; size_t width = 0; int precision = -1; char type = 0; size_t pos = 0;")
+            self.w("if (pos < spec.size() && (spec[pos] == '<' || spec[pos] == '>' || spec[pos] == '^')) { align = spec[pos++]; }")
+            self.w("while (pos < spec.size() && isdigit(spec[pos])) { width = width * 10 + (spec[pos++] - '0'); }")
+            self.w("if (pos < spec.size() && spec[pos] == '.') { pos++; precision = 0; while (pos < spec.size() && isdigit(spec[pos])) { precision = precision * 10 + (spec[pos++] - '0'); } }")
+            self.w("if (pos < spec.size()) { type = spec[pos++]; }")
+            self.w("std::string formatted;")
+            self.w("if (type == 'f' || type == 'F') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::fixed;")
+            self.w("if (precision >= 0) oss << std::setprecision(precision);")
+            self.w("try { double d = std::stod(val); oss << d; } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'e') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::scientific;")
+            self.w("if (precision >= 0) oss << std::setprecision(precision);")
+            self.w("try { oss << std::stod(val); } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'E') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::scientific << std::uppercase;")
+            self.w("if (precision >= 0) oss << std::setprecision(precision);")
+            self.w("try { oss << std::stod(val); } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'x') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::hex;")
+            self.w("try { oss << std::stoi(val); } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'X') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::hex << std::uppercase;")
+            self.w("try { oss << std::stoi(val); } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'o') {")
+            self.depth = self.depth + 1
+            self.w("std::ostringstream oss; oss << std::oct;")
+            self.w("try { oss << std::stoi(val); } catch (...) { oss << val; }")
+            self.w("formatted = oss.str();")
+            self.depth = self.depth - 1
+            self.w("} else if (type == 'b') {")
+            self.depth = self.depth + 1
+            self.w("try { int n = std::stoi(val); std::string b; do { b = char('0' + (n & 1)) + b; n >>= 1; } while (n); formatted = b; } catch (...) { formatted = val; }")
+            self.depth = self.depth - 1
+            self.w("} else { formatted = val; }")
+            self.w("if (width > 0 && formatted.size() < width) {")
+            self.depth = self.depth + 1
+            self.w("size_t pad = width - formatted.size();")
+            self.w("if (align == '^') { formatted = std::string(pad/2,' ') + formatted + std::string(pad-pad/2,' '); }")
+            self.w("else if (align == '>') { formatted = std::string(pad,' ') + formatted; }")
+            self.w("else { formatted = formatted + std::string(pad,' '); }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("r += formatted; i = end;")
+            self.depth = self.depth - 1
+            self.w("} else if (fmt[i] == '}' && i + 1 < fmt.size() && fmt[i + 1] == '}') {")
+            self.depth = self.depth + 1
+            self.w("r += '}'; ++i;")
             self.depth = self.depth - 1
             self.w("} else { r += fmt[i]; }")
             self.depth = self.depth - 1
@@ -3210,6 +3291,7 @@ class TypeChecker {
         self._bi( "exit",    ["int"], "void")
         self._bi( "to_int",  ["str"], "int")
         self._bi( "to_float",["str"], "float")
+        self._bi( "parse_int", ["str", "int"], "int")
         self._bi( "str_get", ["str", "int"], "str")
         self._bi( "str_sub", ["str", "int", "int"], "str")
         self._bi( "str_contains", ["str", "str"], "bool")

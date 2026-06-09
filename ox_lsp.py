@@ -623,6 +623,8 @@ _BUILTIN_DOCS: dict[str, str] = {
     'contains': 'Check if a substring or element exists.\n\n```oxybelis\nfn contains(container: str|List, item: any) -> bool\n```',
     'to_int': 'Parse a string to an integer.\n\n```oxybelis\nfn to_int(s: str) -> int\n```',
     'to_float': 'Parse a string to a float.\n\n```oxybelis\nfn to_float(s: str) -> float\n```',
+    'parse_int': 'Parse a string to an integer with base.\n\n```oxybelis\nfn parse_int(s: str, base: int) -> int\n```',
+    'str_format': 'Format a string with replacement and format specs.\n\nSupports `{}` replacement, `{:.Nf}` (float), `{:x}`/`{:X}` (hex), `{:o}` (octal), `{:b}` (binary), `{:e}`/`{:E}` (scientific), `{:>N}`/`{:<N}`/`{:^N}` (alignment).\n\n```oxybelis\nfn str_format(fmt: str, args: List<str>) -> str\n```',
     'is_digit': 'Check if a character is a digit.\n\n```oxybelis\nfn is_digit(c: str) -> bool\n```',
     'is_alpha': 'Check if a character is alphabetic.\n\n```oxybelis\nfn is_alpha(c: str) -> bool\n```',
     'is_alnum': 'Check if a character is alphanumeric.\n\n```oxybelis\nfn is_alnum(c: str) -> bool\n```',
@@ -758,6 +760,7 @@ _BUILTIN_KINDS: dict[str, int] = {
     'fs_exists': 3, 'fs_is_file': 3, 'fs_is_dir': 3, 'fs_mkdir': 3,
     'fs_list_dir': 3, 'fs_remove': 3, 'fs_rename': 3, 'fs_copy': 3, 'fs_cwd': 3,
     'map': 3, 'filter': 3, 'sorted': 3, 'reduce': 3, 'for_each': 3, 'each': 3, 'any': 3, 'all': 3, 'find': 3, 'take_while': 3, 'drop_while': 3, 'reversed': 3,
+    'parse_int': 3, 'str_format': 3,
 }
 
 for _name, _kind in _BUILTIN_KINDS.items():

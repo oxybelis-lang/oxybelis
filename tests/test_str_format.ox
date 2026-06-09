@@ -14,7 +14,7 @@ fn main() {
     print(r3)
 
     // Edge cases: no placeholders
-    let r4 = str_format("plain", [])
+    let r4 = str_format("plain", List<str>())
     print(r4)
 
     // More args than placeholders

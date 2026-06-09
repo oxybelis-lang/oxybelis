@@ -158,6 +158,36 @@ TESTS = [
         'None',         # str_find not found
         'end',
     ]),
+    ('test_str_format.ox', [
+        'Hello world!',
+        'a + b + c',
+        'Value: 42',
+        'plain',
+        'x y',
+        'only  ',
+        'ox--------',
+        '     hello',
+        '***hello***',
+    ]),
+    ('test_new_features.ox', [
+        '3',        # int(3.14)
+        '42',       # float(42)
+        'true',     # bool(1)
+        'false',    # bool(0)
+        '255',      # parse_int("FF", 16)
+        '10',       # parse_int("1010", 2)
+        '63',       # parse_int("77", 8)
+        '255',      # parse_int("255", 10)
+        '3.14',     # str_format "{:.2f}" 3.14159
+        'ff',       # {:x} 255
+        'FF',       # {:X} 255
+        '377',      # {:o} 255
+        '11111111', # {:b} 255
+        '|        hi|',  # {:>10}
+        '|hi        |',  # {:<10}
+        '|    hi    |',  # {:^10}
+        '3.142e+00',    # {:.3e}
+    ]),
     ('test_modules.ox', [
         'Some(hello world)',
         'Some(3.14159)',
