@@ -724,7 +724,7 @@ _KEYWORD_COMPLETIONS: list[dict] = [
     {'label': 'true',     'kind': 14, 'detail': 'literal',     'insertText': 'true'},
     {'label': 'false',    'kind': 14, 'detail': 'literal',     'insertText': 'false'},
     {'label': 'None',     'kind': 14, 'detail': 'literal',     'insertText': 'None'},
-    {'label': 'Some',     'kind': 14, 'detail': 'constructor', 'insertText': 'Some()'},
+    {'label': 'Some',     'kind': 14, 'detail': 'constructor', 'insertText': 'Some($1)', 'insertTextFormat': 2},
     {'label': 'pub',      'kind': 14, 'detail': 'keyword',     'insertText': 'pub '},
     {'label': 'import',   'kind': 14, 'detail': 'keyword',     'insertText': 'import '},
     {'label': 'break',    'kind': 14, 'detail': 'keyword',     'insertText': 'break'},
@@ -764,7 +764,8 @@ for _name, _kind in _BUILTIN_KINDS.items():
     _doc = _ALL_DOCS.get(_name)
     _item: dict = {
         'label': _name, 'kind': _kind, 'detail': 'builtin',
-        'insertText': _name + '()',
+        'insertText': _name + '($1)',
+        'insertTextFormat': 2,
     }
     if _doc:
         _item['documentation'] = {'kind': 'markdown', 'value': _doc}
@@ -777,7 +778,8 @@ for _name, _docs in _MATH_DOCS.items():
         'label': f'math.{_name}',
         'kind': 3,
         'detail': 'math',
-        'insertText': _name + '()',
+        'insertText': _name + '($1)',
+        'insertTextFormat': 2,
         'filterText': _name,
         'documentation': {'kind': 'markdown', 'value': _docs},
     })
@@ -907,7 +909,7 @@ def _collect_symbols(stmts, seen, items):
     for s in stmts:
         if isinstance(s, FnDef) and s.name not in seen:
             seen.add(s.name)
-            items.append({'label': s.name, 'kind': 3, 'detail': 'function', 'insertText': s.name})
+            items.append({'label': s.name, 'kind': 3, 'detail': 'function', 'insertText': f'{s.name}($1)', 'insertTextFormat': 2})
             _collect_symbols(s.body, seen, items)
         elif isinstance(s, ClassDef) and s.name not in seen:
             seen.add(s.name)
@@ -968,15 +970,19 @@ def _load_module_functions(mod_name: str) -> dict[str, dict]:
         functions: dict[str, dict] = {}
         for s in ast.stmts:
             if isinstance(s, FnDef):
-                params_str = ', '.join(f'{p[0]}: {p[1]}' for p in s.params)
-                ret = s.return_type or 'void'
+                if s.params:
+                    placeholders = '${1:' + s.params[0][0] + '}'
+                    for p in s.params[1:]:
+                        placeholders += f', ${{1:{p[0]}}}'
+                    insert = f'{s.name}({placeholders})'
+                else:
+                    insert = f'{s.name}($1)'
                 functions[s.name] = {
                     'label': s.name,
                     'kind': 3,
                     'detail': f'{mod_name} function',
-                    'insertText': f'{s.name}()',
-                    'params': params_str,
-                    'return_type': ret,
+                    'insertText': insert,
+                    'insertTextFormat': 2,
                 }
             if isinstance(s, ClassDef):
                 functions[s.name] = {
@@ -1005,80 +1011,80 @@ def _find_imported_modules(stmts) -> list[str]:
     return modules
 
 _LIST_METHODS: dict[str, dict] = {
-    'push':           {'kind': 3, 'detail': 'List method', 'insertText': 'push()'},
-    'pop':            {'kind': 3, 'detail': 'List method', 'insertText': 'pop()'},
-    'len':            {'kind': 3, 'detail': 'List method', 'insertText': 'len()'},
-    'contains':       {'kind': 3, 'detail': 'List method', 'insertText': 'contains()'},
-    'filter':         {'kind': 3, 'detail': 'List method', 'insertText': 'filter()'},
-    'map':            {'kind': 3, 'detail': 'List method', 'insertText': 'map()'},
-    'reduce':         {'kind': 3, 'detail': 'List method', 'insertText': 'reduce()'},
-    'for_each':       {'kind': 3, 'detail': 'List method', 'insertText': 'for_each()'},
-    'each':           {'kind': 3, 'detail': 'List method', 'insertText': 'each()'},
-    'any':            {'kind': 3, 'detail': 'List method', 'insertText': 'any()'},
-    'all':            {'kind': 3, 'detail': 'List method', 'insertText': 'all()'},
-    'find':           {'kind': 3, 'detail': 'List method', 'insertText': 'find()'},
-    'sorted':         {'kind': 3, 'detail': 'List method', 'insertText': 'sorted()'},
-    'reversed':       {'kind': 3, 'detail': 'List method', 'insertText': 'reversed()'},
-    'sum':            {'kind': 3, 'detail': 'List method', 'insertText': 'sum()'},
-    'min':            {'kind': 3, 'detail': 'List method', 'insertText': 'min()'},
-    'max':            {'kind': 3, 'detail': 'List method', 'insertText': 'max()'},
-    'take_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'take_while()'},
-    'drop_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'drop_while()'},
-    'chunked':        {'kind': 3, 'detail': 'List method', 'insertText': 'chunked()'},
-    'windowed':       {'kind': 3, 'detail': 'List method', 'insertText': 'windowed()'},
-    'pairwise':       {'kind': 3, 'detail': 'List method', 'insertText': 'pairwise()'},
-    'cycle':          {'kind': 3, 'detail': 'List method', 'insertText': 'cycle()'},
-    'combinations':   {'kind': 3, 'detail': 'List method', 'insertText': 'combinations()'},
-    'permutations':   {'kind': 3, 'detail': 'List method', 'insertText': 'permutations()'},
-    'list_insert':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_insert()'},
-    'list_remove':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_remove()'},
+    'push':           {'kind': 3, 'detail': 'List method', 'insertText': 'push($1)', 'insertTextFormat': 2},
+    'pop':            {'kind': 3, 'detail': 'List method', 'insertText': 'pop()', 'insertTextFormat': 2},
+    'len':            {'kind': 3, 'detail': 'List method', 'insertText': 'len()', 'insertTextFormat': 2},
+    'contains':       {'kind': 3, 'detail': 'List method', 'insertText': 'contains($1)', 'insertTextFormat': 2},
+    'filter':         {'kind': 3, 'detail': 'List method', 'insertText': 'filter($1)', 'insertTextFormat': 2},
+    'map':            {'kind': 3, 'detail': 'List method', 'insertText': 'map($1)', 'insertTextFormat': 2},
+    'reduce':         {'kind': 3, 'detail': 'List method', 'insertText': 'reduce($1)', 'insertTextFormat': 2},
+    'for_each':       {'kind': 3, 'detail': 'List method', 'insertText': 'for_each($1)', 'insertTextFormat': 2},
+    'each':           {'kind': 3, 'detail': 'List method', 'insertText': 'each($1)', 'insertTextFormat': 2},
+    'any':            {'kind': 3, 'detail': 'List method', 'insertText': 'any($1)', 'insertTextFormat': 2},
+    'all':            {'kind': 3, 'detail': 'List method', 'insertText': 'all($1)', 'insertTextFormat': 2},
+    'find':           {'kind': 3, 'detail': 'List method', 'insertText': 'find($1)', 'insertTextFormat': 2},
+    'sorted':         {'kind': 3, 'detail': 'List method', 'insertText': 'sorted()', 'insertTextFormat': 2},
+    'reversed':       {'kind': 3, 'detail': 'List method', 'insertText': 'reversed()', 'insertTextFormat': 2},
+    'sum':            {'kind': 3, 'detail': 'List method', 'insertText': 'sum()', 'insertTextFormat': 2},
+    'min':            {'kind': 3, 'detail': 'List method', 'insertText': 'min()', 'insertTextFormat': 2},
+    'max':            {'kind': 3, 'detail': 'List method', 'insertText': 'max()', 'insertTextFormat': 2},
+    'take_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'take_while($1)', 'insertTextFormat': 2},
+    'drop_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'drop_while($1)', 'insertTextFormat': 2},
+    'chunked':        {'kind': 3, 'detail': 'List method', 'insertText': 'chunked($1)', 'insertTextFormat': 2},
+    'windowed':       {'kind': 3, 'detail': 'List method', 'insertText': 'windowed($1)', 'insertTextFormat': 2},
+    'pairwise':       {'kind': 3, 'detail': 'List method', 'insertText': 'pairwise()', 'insertTextFormat': 2},
+    'cycle':          {'kind': 3, 'detail': 'List method', 'insertText': 'cycle()', 'insertTextFormat': 2},
+    'combinations':   {'kind': 3, 'detail': 'List method', 'insertText': 'combinations($1)', 'insertTextFormat': 2},
+    'permutations':   {'kind': 3, 'detail': 'List method', 'insertText': 'permutations()', 'insertTextFormat': 2},
+    'list_insert':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_insert($1)', 'insertTextFormat': 2},
+    'list_remove':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_remove($1)', 'insertTextFormat': 2},
 }
 
 _MAP_METHODS: dict[str, dict] = {
-    'map_contains':   {'kind': 3, 'detail': 'Map method', 'insertText': 'map_contains()'},
-    'map_get':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_get()'},
-    'map_set':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_set()'},
-    'len':            {'kind': 3, 'detail': 'Map method', 'insertText': 'len()'},
-    'keys':           {'kind': 3, 'detail': 'Map method', 'insertText': 'keys()'},
-    'values':         {'kind': 3, 'detail': 'Map method', 'insertText': 'values()'},
-    'contains':       {'kind': 3, 'detail': 'Map method', 'insertText': 'contains()'},
-    'filter':         {'kind': 3, 'detail': 'Map method', 'insertText': 'filter()'},
-    'map':            {'kind': 3, 'detail': 'Map method', 'insertText': 'map()'},
-    'for_each':       {'kind': 3, 'detail': 'Map method', 'insertText': 'for_each()'},
-    'each':           {'kind': 3, 'detail': 'Map method', 'insertText': 'each()'},
+    'map_contains':   {'kind': 3, 'detail': 'Map method', 'insertText': 'map_contains($1)', 'insertTextFormat': 2},
+    'map_get':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_get($1)', 'insertTextFormat': 2},
+    'map_set':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_set($1)', 'insertTextFormat': 2},
+    'len':            {'kind': 3, 'detail': 'Map method', 'insertText': 'len()', 'insertTextFormat': 2},
+    'keys':           {'kind': 3, 'detail': 'Map method', 'insertText': 'keys()', 'insertTextFormat': 2},
+    'values':         {'kind': 3, 'detail': 'Map method', 'insertText': 'values()', 'insertTextFormat': 2},
+    'contains':       {'kind': 3, 'detail': 'Map method', 'insertText': 'contains($1)', 'insertTextFormat': 2},
+    'filter':         {'kind': 3, 'detail': 'Map method', 'insertText': 'filter($1)', 'insertTextFormat': 2},
+    'map':            {'kind': 3, 'detail': 'Map method', 'insertText': 'map($1)', 'insertTextFormat': 2},
+    'for_each':       {'kind': 3, 'detail': 'Map method', 'insertText': 'for_each($1)', 'insertTextFormat': 2},
+    'each':           {'kind': 3, 'detail': 'Map method', 'insertText': 'each($1)', 'insertTextFormat': 2},
 }
 
 _STR_METHODS: dict[str, dict] = {
-    'len':            {'kind': 3, 'detail': 'str method', 'insertText': 'len()'},
-    'contains':       {'kind': 3, 'detail': 'str method', 'insertText': 'contains()'},
-    'str_sub':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_sub()'},
-    'str_get':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_get()'},
-    'str_split':      {'kind': 3, 'detail': 'str method', 'insertText': 'str_split()'},
-    'str_trim':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim()'},
-    'str_trim_start': {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_start()'},
-    'str_trim_end':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_end()'},
-    'str_replace':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_replace()'},
-    'str_replace_all':{'kind': 3, 'detail': 'str method', 'insertText': 'str_replace_all()'},
-    'str_repeat':     {'kind': 3, 'detail': 'str method', 'insertText': 'str_repeat()'},
-    'str_reverse':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_reverse()'},
-    'str_find':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_find()'},
-    'to_upper':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_upper()'},
-    'to_lower':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_lower()'},
-    'starts_with':    {'kind': 3, 'detail': 'str method', 'insertText': 'starts_with()'},
-    'ends_with':      {'kind': 3, 'detail': 'str method', 'insertText': 'ends_with()'},
-    'is_digit':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_digit()'},
-    'is_alpha':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alpha()'},
-    'is_alnum':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alnum()'},
-    'str_contains':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_contains()'},
-    'str_join':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_join()'},
+    'len':            {'kind': 3, 'detail': 'str method', 'insertText': 'len()', 'insertTextFormat': 2},
+    'contains':       {'kind': 3, 'detail': 'str method', 'insertText': 'contains($1)', 'insertTextFormat': 2},
+    'str_sub':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_sub($1)', 'insertTextFormat': 2},
+    'str_get':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_get($1)', 'insertTextFormat': 2},
+    'str_split':      {'kind': 3, 'detail': 'str method', 'insertText': 'str_split($1)', 'insertTextFormat': 2},
+    'str_trim':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim()', 'insertTextFormat': 2},
+    'str_trim_start': {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_start()', 'insertTextFormat': 2},
+    'str_trim_end':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_end()', 'insertTextFormat': 2},
+    'str_replace':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_replace($1)', 'insertTextFormat': 2},
+    'str_replace_all':{'kind': 3, 'detail': 'str method', 'insertText': 'str_replace_all($1)', 'insertTextFormat': 2},
+    'str_repeat':     {'kind': 3, 'detail': 'str method', 'insertText': 'str_repeat($1)', 'insertTextFormat': 2},
+    'str_reverse':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_reverse()', 'insertTextFormat': 2},
+    'str_find':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_find($1)', 'insertTextFormat': 2},
+    'to_upper':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_upper()', 'insertTextFormat': 2},
+    'to_lower':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_lower()', 'insertTextFormat': 2},
+    'starts_with':    {'kind': 3, 'detail': 'str method', 'insertText': 'starts_with($1)', 'insertTextFormat': 2},
+    'ends_with':      {'kind': 3, 'detail': 'str method', 'insertText': 'ends_with($1)', 'insertTextFormat': 2},
+    'is_digit':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_digit()', 'insertTextFormat': 2},
+    'is_alpha':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alpha()', 'insertTextFormat': 2},
+    'is_alnum':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alnum()', 'insertTextFormat': 2},
+    'str_contains':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_contains($1)', 'insertTextFormat': 2},
+    'str_join':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_join($1)', 'insertTextFormat': 2},
 }
 
 _OPTION_METHODS: dict[str, dict] = {
     'value':          {'kind': 10, 'detail': 'Option field', 'insertText': 'value'},
-    'is_some':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_some()'},
-    'is_none':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_none()'},
-    'unwrap':         {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap()'},
-    'unwrap_or':      {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap_or()'},
+    'is_some':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_some()', 'insertTextFormat': 2},
+    'is_none':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_none()', 'insertTextFormat': 2},
+    'unwrap':         {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap()', 'insertTextFormat': 2},
+    'unwrap_or':      {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap_or($1)', 'insertTextFormat': 2},
 }
 
 _TYPE_METHODS: dict[str, dict[str, dict]] = {
@@ -1217,7 +1223,8 @@ def handle_completion(msg: LSPMessage):
                         'label': name,
                         'kind': 3,
                         'detail': 'math',
-                        'insertText': f'{name}()',
+                        'insertText': f'{name}($1)',
+                        'insertTextFormat': 2,
                         'documentation': {'kind': 'markdown', 'value': doc_text},
                     })
         else:
@@ -1240,12 +1247,15 @@ def handle_completion(msg: LSPMessage):
                 mod_fns = _load_module_functions(var_name)
                 for name, meta in mod_fns.items():
                     if name.startswith(prefix):
-                        items.append({
+                        item = {
                             'label': meta['label'],
                             'kind': meta['kind'],
                             'detail': meta['detail'],
                             'insertText': meta['insertText'],
-                        })
+                        }
+                        if 'insertTextFormat' in meta:
+                            item['insertTextFormat'] = meta['insertTextFormat']
+                        items.append(item)
             if not var_type:
                 var_type = _find_var_type_text(doc.source, var_name)
                 _log(f'Text lookup: var={var_name!r} type={var_type!r}')
@@ -1264,7 +1274,8 @@ def handle_completion(msg: LSPMessage):
                                 'label': fn.name,
                                 'kind': 3,
                                 'detail': f'{cls.name} method',
-                                'insertText': f'{fn.name}()',
+                                'insertText': f'{fn.name}($1)',
+                                'insertTextFormat': 2,
                             })
                     for fname, _ in cls.fields:
                         if fname.startswith(prefix) and fname not in seen:
@@ -1285,6 +1296,8 @@ def handle_completion(msg: LSPMessage):
                                 'detail': meta['detail'],
                                 'insertText': meta['insertText'],
                             }
+                            if 'insertTextFormat' in meta:
+                                item['insertTextFormat'] = meta['insertTextFormat']
                             doc_text = _ALL_DOCS.get(name)
                             if doc_text:
                                 item['documentation'] = {'kind': 'markdown', 'value': doc_text}
