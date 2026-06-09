@@ -663,6 +663,18 @@ _BUILTIN_DOCS: dict[str, str] = {
     'fs_rename': 'Rename a file or directory.\n\n```oxybelis\nfn fs_rename(old: str, new: str) -> void\n```',
     'fs_copy': 'Copy a file.\n\n```oxybelis\nfn fs_copy(src: str, dst: str) -> void\n```',
     'fs_cwd': 'Get the current working directory.\n\n```oxybelis\nfn fs_cwd() -> str\n```',
+    'map': 'Transform each element of a list using a mapper function.\n\n```oxybelis\nfn map(list: List<T>, fn: T -> U) -> List<U>\n```',
+    'filter': 'Keep elements of a list that satisfy a predicate function.\n\n```oxybelis\nfn filter(list: List<T>, fn: T -> bool) -> List<T>\n```',
+    'sorted': 'Sort elements of a list.\n\n```oxybelis\nfn sorted(list: List<T>) -> List<T>\nfn sorted(list: List<T>, key: T -> U) -> List<T>\n```',
+    'reduce': 'Reduce a list to a single value using an accumulator function.\n\n```oxybelis\nfn reduce(list: List<T>, initial: U, fn: (U, T) -> U) -> U\n```',
+    'for_each': 'Apply a function to each element of a list.\n\n```oxybelis\nfn for_each(list: List<T>, fn: T -> void) -> void\n```',
+    'each': 'Apply a function to each element of a list.\n\n```oxybelis\nfn each(list: List<T>, fn: T -> void) -> void\n```',
+    'any': 'Check if any element of a list satisfies a predicate function.\n\n```oxybelis\nfn any(list: List<T>, fn: T -> bool) -> bool\n```',
+    'all': 'Check if all elements of a list satisfy a predicate function.\n\n```oxybelis\nfn all(list: List<T>, fn: T -> bool) -> bool\n```',
+    'find': 'Find the first element of a list that satisfies a predicate function.\n\n```oxybelis\nfn find(list: List<T>, fn: T -> bool) -> Option<T>\n```',
+    'take_while': 'Take elements from a list while a predicate function is true.\n\n```oxybelis\nfn take_while(list: List<T>, fn: T -> bool) -> List<T>\n```',
+    'drop_while': 'Drop elements from a list while a predicate function is true.\n\n```oxybelis\nfn drop_while(list: List<T>, fn: T -> bool) -> List<T>\n```',
+    'reversed': 'Reverse a list.\n\n```oxybelis\nfn reversed(list: List<T>) -> List<T>\n```',
 }
 
 _MATH_DOCS: dict[str, str] = {
@@ -745,6 +757,7 @@ _BUILTIN_KINDS: dict[str, int] = {
     'list_insert': 3, 'list_remove': 3,
     'fs_exists': 3, 'fs_is_file': 3, 'fs_is_dir': 3, 'fs_mkdir': 3,
     'fs_list_dir': 3, 'fs_remove': 3, 'fs_rename': 3, 'fs_copy': 3, 'fs_cwd': 3,
+    'map': 3, 'filter': 3, 'sorted': 3, 'reduce': 3, 'for_each': 3, 'each': 3, 'any': 3, 'all': 3, 'find': 3, 'take_while': 3, 'drop_while': 3, 'reversed': 3,
 }
 
 for _name, _kind in _BUILTIN_KINDS.items():
@@ -918,20 +931,298 @@ def _collect_symbols(stmts, seen, items):
             for _, arm_body in s.arms:
                 _collect_symbols(arm_body, seen, items)
 
+_COMPLETION_RANKS: dict[int, int] = {
+    3:  10,  # Function
+    6:  11,  # Variable
+    7:  12,  # Class
+    22: 20,  # TypeParameter
+    14: 30,  # Keyword
+}
+
+_LIST_METHODS: dict[str, dict] = {
+    'push':           {'kind': 3, 'detail': 'List method', 'insertText': 'push()'},
+    'pop':            {'kind': 3, 'detail': 'List method', 'insertText': 'pop()'},
+    'len':            {'kind': 3, 'detail': 'List method', 'insertText': 'len()'},
+    'contains':       {'kind': 3, 'detail': 'List method', 'insertText': 'contains()'},
+    'filter':         {'kind': 3, 'detail': 'List method', 'insertText': 'filter()'},
+    'map':            {'kind': 3, 'detail': 'List method', 'insertText': 'map()'},
+    'reduce':         {'kind': 3, 'detail': 'List method', 'insertText': 'reduce()'},
+    'for_each':       {'kind': 3, 'detail': 'List method', 'insertText': 'for_each()'},
+    'each':           {'kind': 3, 'detail': 'List method', 'insertText': 'each()'},
+    'any':            {'kind': 3, 'detail': 'List method', 'insertText': 'any()'},
+    'all':            {'kind': 3, 'detail': 'List method', 'insertText': 'all()'},
+    'find':           {'kind': 3, 'detail': 'List method', 'insertText': 'find()'},
+    'sorted':         {'kind': 3, 'detail': 'List method', 'insertText': 'sorted()'},
+    'reversed':       {'kind': 3, 'detail': 'List method', 'insertText': 'reversed()'},
+    'sum':            {'kind': 3, 'detail': 'List method', 'insertText': 'sum()'},
+    'min':            {'kind': 3, 'detail': 'List method', 'insertText': 'min()'},
+    'max':            {'kind': 3, 'detail': 'List method', 'insertText': 'max()'},
+    'take_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'take_while()'},
+    'drop_while':     {'kind': 3, 'detail': 'List method', 'insertText': 'drop_while()'},
+    'chunked':        {'kind': 3, 'detail': 'List method', 'insertText': 'chunked()'},
+    'windowed':       {'kind': 3, 'detail': 'List method', 'insertText': 'windowed()'},
+    'pairwise':       {'kind': 3, 'detail': 'List method', 'insertText': 'pairwise()'},
+    'cycle':          {'kind': 3, 'detail': 'List method', 'insertText': 'cycle()'},
+    'combinations':   {'kind': 3, 'detail': 'List method', 'insertText': 'combinations()'},
+    'permutations':   {'kind': 3, 'detail': 'List method', 'insertText': 'permutations()'},
+    'list_insert':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_insert()'},
+    'list_remove':    {'kind': 3, 'detail': 'List method', 'insertText': 'list_remove()'},
+}
+
+_MAP_METHODS: dict[str, dict] = {
+    'map_contains':   {'kind': 3, 'detail': 'Map method', 'insertText': 'map_contains()'},
+    'map_get':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_get()'},
+    'map_set':        {'kind': 3, 'detail': 'Map method', 'insertText': 'map_set()'},
+    'len':            {'kind': 3, 'detail': 'Map method', 'insertText': 'len()'},
+    'keys':           {'kind': 3, 'detail': 'Map method', 'insertText': 'keys()'},
+    'values':         {'kind': 3, 'detail': 'Map method', 'insertText': 'values()'},
+    'contains':       {'kind': 3, 'detail': 'Map method', 'insertText': 'contains()'},
+    'filter':         {'kind': 3, 'detail': 'Map method', 'insertText': 'filter()'},
+    'map':            {'kind': 3, 'detail': 'Map method', 'insertText': 'map()'},
+    'for_each':       {'kind': 3, 'detail': 'Map method', 'insertText': 'for_each()'},
+    'each':           {'kind': 3, 'detail': 'Map method', 'insertText': 'each()'},
+}
+
+_STR_METHODS: dict[str, dict] = {
+    'len':            {'kind': 3, 'detail': 'str method', 'insertText': 'len()'},
+    'contains':       {'kind': 3, 'detail': 'str method', 'insertText': 'contains()'},
+    'str_sub':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_sub()'},
+    'str_get':        {'kind': 3, 'detail': 'str method', 'insertText': 'str_get()'},
+    'str_split':      {'kind': 3, 'detail': 'str method', 'insertText': 'str_split()'},
+    'str_trim':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim()'},
+    'str_trim_start': {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_start()'},
+    'str_trim_end':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_trim_end()'},
+    'str_replace':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_replace()'},
+    'str_replace_all':{'kind': 3, 'detail': 'str method', 'insertText': 'str_replace_all()'},
+    'str_repeat':     {'kind': 3, 'detail': 'str method', 'insertText': 'str_repeat()'},
+    'str_reverse':    {'kind': 3, 'detail': 'str method', 'insertText': 'str_reverse()'},
+    'str_find':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_find()'},
+    'to_upper':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_upper()'},
+    'to_lower':       {'kind': 3, 'detail': 'str method', 'insertText': 'to_lower()'},
+    'starts_with':    {'kind': 3, 'detail': 'str method', 'insertText': 'starts_with()'},
+    'ends_with':      {'kind': 3, 'detail': 'str method', 'insertText': 'ends_with()'},
+    'is_digit':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_digit()'},
+    'is_alpha':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alpha()'},
+    'is_alnum':       {'kind': 3, 'detail': 'str method', 'insertText': 'is_alnum()'},
+    'str_contains':   {'kind': 3, 'detail': 'str method', 'insertText': 'str_contains()'},
+    'str_join':       {'kind': 3, 'detail': 'str method', 'insertText': 'str_join()'},
+}
+
+_OPTION_METHODS: dict[str, dict] = {
+    'value':          {'kind': 10, 'detail': 'Option field', 'insertText': 'value'},
+    'is_some':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_some()'},
+    'is_none':        {'kind': 3, 'detail': 'Option method', 'insertText': 'is_none()'},
+    'unwrap':         {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap()'},
+    'unwrap_or':      {'kind': 3, 'detail': 'Option method', 'insertText': 'unwrap_or()'},
+}
+
+_TYPE_METHODS: dict[str, dict[str, dict]] = {
+    'List':   _LIST_METHODS,
+    'Map':    _MAP_METHODS,
+    'str':    _STR_METHODS,
+    'Option': _OPTION_METHODS,
+}
+
+def _base_type(ty: str) -> str:
+    idx = ty.find('<')
+    if idx >= 0:
+        return ty[:idx]
+    return ty
+
+def _find_class_def(stmts, name: str):
+    for s in stmts:
+        if isinstance(s, ClassDef):
+            if s.name == name:
+                return s
+            for m in s.methods:
+                found = _find_class_def(m.body, name)
+                if found:
+                    return found
+        if isinstance(s, FnDef):
+            found = _find_class_def(s.body, name)
+            if found:
+                return found
+    return None
+
+def _get_member_methods(ty: str) -> dict[str, dict]:
+    base = _base_type(ty)
+    return _TYPE_METHODS.get(base, {})
+
+def _completion_sort_key(item: dict) -> tuple[int, str]:
+    kind = item.get('kind', 99)
+    rank = _COMPLETION_RANKS.get(kind, 50)
+    return (rank, item.get('label', ''))
+
+def _find_var_type_text(source: str, var_name: str) -> str:
+    for m in re.finditer(rf'\b(?:var|let)\s+{re.escape(var_name)}\s*:\s*([^\s=;]+)', source):
+        return m.group(1).strip()
+    return ''
+
+def _find_var_type(ast, var_name: str) -> str:
+    for s in ast.stmts:
+        if isinstance(s, VarDecl) and s.name == var_name:
+            return s.type_ann or ''
+        if isinstance(s, FnDef):
+            found = _find_var_type_stmts(s.body, var_name)
+            if found:
+                return found
+        if isinstance(s, ClassDef):
+            for m in s.methods:
+                found = _find_var_type_stmts(m.body, var_name)
+                if found:
+                    return found
+    return ''
+
+def _find_var_type_stmts(stmts, var_name: str) -> str:
+    for s in stmts:
+        if isinstance(s, VarDecl) and s.name == var_name:
+            return s.type_ann or ''
+        if isinstance(s, ForStmt):
+            if getattr(s, 'var', '') == var_name or var_name in getattr(s, 'vars', []):
+                return ''
+            found = _find_var_type_stmts(s.body, var_name)
+            if found:
+                return found
+        if isinstance(s, IfStmt):
+            found = _find_var_type_stmts(s.then_body, var_name)
+            if found:
+                return found
+            for _, eb in s.elif_clauses:
+                found = _find_var_type_stmts(eb, var_name)
+                if found:
+                    return found
+            if s.else_body:
+                found = _find_var_type_stmts(s.else_body, var_name)
+                if found:
+                    return found
+        if isinstance(s, WhileStmt):
+            found = _find_var_type_stmts(s.body, var_name)
+            if found:
+                return found
+        if isinstance(s, MatchStmt):
+            for _, arm_body in s.arms:
+                found = _find_var_type_stmts(arm_body, var_name)
+                if found:
+                    return found
+    return ''
+
+def _detect_member_access(source: str, line: int, col: int) -> tuple[str, str] | None:
+    """Check if cursor is after 'expr.' and return (var_name, prefix)."""
+    lines = source.split('\n')
+    if line >= len(lines):
+        return None
+    line_text = lines[line]
+    before = line_text[:col]
+    stripped = before.rstrip()
+    dot_idx = stripped.rfind('.')
+    if dot_idx < 0:
+        return None
+    before_dot = stripped[:dot_idx].rstrip()
+    if not before_dot:
+        return None
+    var_name = ''
+    for ch in reversed(before_dot):
+        if ch.isalnum() or ch == '_':
+            var_name = ch + var_name
+        else:
+            break
+    if not var_name:
+        return None
+    prefix = stripped[dot_idx + 1:]
+    return (var_name, prefix)
+
 def handle_completion(msg: LSPMessage):
-    items = list(_KEYWORD_COMPLETIONS)
-    uri = msg.params.get('textDocument', {}).get('uri', '')
+    params = msg.params
+    uri = params.get('textDocument', {}).get('uri', '')
+    pos = params.get('position', {})
+    line = pos.get('line', 0)
+    col = pos.get('character', 0)
     doc = state.documents.get(uri)
+    member_info = None
     if doc:
-        try:
-            tokens = Lexer(doc.source).tokenize()
-            parser = Parser(tokens, doc.source)
-            ast = parser.parse()
-            seen = {c['label'] for c in _KEYWORD_COMPLETIONS}
-            _collect_symbols(ast.stmts, seen, items)
-        except Exception:
-            pass
-    items.extend(_MATH_COMPLETIONS)
+        member_info = _detect_member_access(doc.source, line, col)
+    items: list[dict] = []
+    if member_info and doc:
+        _log(f'Member access: var={member_info[0]!r} prefix={member_info[1]!r}')
+        var_name, prefix = member_info
+        if var_name == 'math':
+            for name, doc_text in _MATH_DOCS.items():
+                if name.startswith(prefix):
+                    items.append({
+                        'label': name,
+                        'kind': 3,
+                        'detail': 'math',
+                        'insertText': f'{name}()',
+                        'documentation': {'kind': 'markdown', 'value': doc_text},
+                    })
+        else:
+            var_type = ''
+            ast = None
+            try:
+                tokens = Lexer(doc.source).tokenize()
+                parser = Parser(tokens, doc.source)
+                ast = parser.parse()
+                var_type = _find_var_type(ast, var_name)
+                _log(f'AST lookup: var={var_name!r} type={var_type!r}')
+            except Exception:
+                _log(f'AST parse failed, trying text lookup')
+            if not var_type:
+                var_type = _find_var_type_text(doc.source, var_name)
+                _log(f'Text lookup: var={var_name!r} type={var_type!r}')
+            if var_type:
+                base = _base_type(var_type)
+                cls = None
+                if ast is not None:
+                    cls = _find_class_def(ast.stmts, base)
+                _log(f'Type: base={base!r} cls={cls is not None}')
+                if cls is not None:
+                    seen = set()
+                    for fn in cls.methods:
+                        if fn.name.startswith(prefix) and fn.name not in seen:
+                            seen.add(fn.name)
+                            items.append({
+                                'label': fn.name,
+                                'kind': 3,
+                                'detail': f'{cls.name} method',
+                                'insertText': f'{fn.name}()',
+                            })
+                    for fname, _ in cls.fields:
+                        if fname.startswith(prefix) and fname not in seen:
+                            seen.add(fname)
+                            items.append({
+                                'label': fname,
+                                'kind': 6,
+                                'detail': f'{cls.name} field',
+                                'insertText': fname,
+                            })
+                else:
+                    methods = _get_member_methods(var_type)
+                    for name, meta in methods.items():
+                        if name.startswith(prefix):
+                            item = {
+                                'label': name,
+                                'kind': meta['kind'],
+                                'detail': meta['detail'],
+                                'insertText': meta['insertText'],
+                            }
+                            doc_text = _ALL_DOCS.get(name)
+                            if doc_text:
+                                item['documentation'] = {'kind': 'markdown', 'value': doc_text}
+                            items.append(item)
+    if not items:
+        _log('Falling back to full completions')
+        items = list(_KEYWORD_COMPLETIONS)
+        if doc:
+            try:
+                tokens = Lexer(doc.source).tokenize()
+                parser = Parser(tokens, doc.source)
+                ast = parser.parse()
+                seen = {c['label'] for c in _KEYWORD_COMPLETIONS}
+                _collect_symbols(ast.stmts, seen, items)
+            except Exception:
+                pass
+        items.extend(_MATH_COMPLETIONS)
+    items.sort(key=_completion_sort_key)
     conn.send_response(msg.id, {
         'isIncomplete': False,
         'items': items,
