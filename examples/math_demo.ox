@@ -4,7 +4,7 @@ fn main() {
     // ── Array creation ──
     let z = math.zeros(5)
     print(z)
-
+    
     let o = math.ones(3)
     print(o)
 

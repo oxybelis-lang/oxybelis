@@ -33,7 +33,7 @@ fn main() {
     print("");
 
     var numbers: List<int> = [1, 2, 3, 4, 5, 6];
-
+    
     print("numbers.map(dbl):");
     let dbld = numbers.map(dbl);
     print(dbld);

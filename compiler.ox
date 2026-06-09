@@ -2480,7 +2480,7 @@ class CodeGen {
             self.w("T m=v[0]; for(const auto& x:v) if(x<m) m=x; return m;")
             self.depth = self.depth - 1
             self.w("}")
-self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
+            self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
             self.depth = self.depth + 1
             self.w("T m=v[0]; for(const auto& x:v) if(m<x) m=x; return m;")
             self.depth = self.depth - 1
@@ -2492,6 +2492,7 @@ self.w("template<typename T> T _ox_max(const std::vector<T>& v){")
             self.w("else std::sort(r.begin(), r.end(), std::greater<T>());")
             self.w("return r;")
             self.depth = self.depth - 1
+            self.w("}")
             self.w("// ── itertools (List<T>) ───")
             self.w("template<typename T> std::vector<std::vector<T>> _ox_combinations(const std::vector<T>& v,int k){")
             self.depth = self.depth + 1

@@ -1,0 +1,4 @@
+FROM gemma4:12b-32k
+# Tell Ollama to allow up to 4096 tokens per individual stream response
+PARAMETER num_predict 4096
+PARAMETER num_ctx 32768

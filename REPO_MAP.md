@@ -1,0 +1,424 @@
+# REPOSITORY STRUCTURE MAP
+
+> This index outlines structural signatures. Refer to specific line scopes when modifying code.
+
+## File: `oxybelis.py`
+- Line 26: `class TT(Enum):`
+- Line 69: `class Token:`
+- Line 76: `def __repr__(self): return f"[{self.type.name} {self.value!r} {self.line}:{self.col}]"`
+- Line 82: `class LexError(Exception):`
+- Line 83: `def __init__(self, msg, line=0, col=0):`
+- Line 88: `class Lexer:`
+- Line 89: `def __init__(self, src: str):`
+- Line 96: `def peek(self, offset=0) -> str:`
+- Line 100: `def advance(self) -> str:`
+- Line 106: `def tok(self, tt: TT, val: str, line: int, col: int, length: int = 0) -> Token:`
+- Line 109: `def tok_eof(self) -> Token:`
+- Line 112: `def skip_trivia(self):`
+- Line 135: `def tokenize(self) -> PyList[Token]:`
+- Line 182: `def op2(s, tt2, tt1):`
+- Line 235: `class Program:      stmts: PyList[Any]`
+- Line 237: `class FnDef:`
+- Line 242: `class ClassDef:`
+- Line 246: `class ImportStmt:   path: PyList[str]`
+- Line 248: `class VarDecl:      name: str; type_ann: Optional[str]; value: Any; mutable: bool`
+- Line 250: `class Assignment:   target: Any; value: Any; op: str='='`
+- Line 252: `class ReturnStmt:   value: Optional[Any]`
+- Line 254: `class BreakStmt:    pass`
+- Line 256: `class ContinueStmt: pass`
+- Line 258: `class YieldStmt:    value: Any`
+- Line 260: `class IfStmt:`
+- Line 264: `class ForStmt:`
+- Line 268: `class WhileStmt:    cond: Any; body: PyList[Any]`
+- Line 270: `class MatchStmt:    subject: Any; arms: PyList[Tuple[Any,PyList[Any]]]`
+- Line 272: `class ExprStmt:     expr: Any`
+- Line 275: `class BinOp:        op: str; left: Any; right: Any`
+- Line 277: `class UnaryOp:      op: str; operand: Any`
+- Line 279: `class FnCall:       func: Any; args: PyList[Any]; type_args: PyList[str]=field(default_factory=list)`
+- Line 281: `class MethodCall:   obj: Any; name: str; args: PyList[Any]`
+- Line 283: `class Attr:         obj: Any; name: str`
+- Line 285: `class Index:        obj: Any; idx: Any`
+- Line 287: `class Ident:        name: str`
+- Line 289: `class IntLit:       value: int`
+- Line 291: `class FloatLit:     value: float`
+- Line 293: `class StrLit:       value: str`
+- Line 295: `class BoolLit:      value: bool`
+- Line 297: `class NoneLit:      pass`
+- Line 299: `class SomeLit:      value: Any`
+- Line 301: `class ListLit:      elems: PyList[Any]`
+- Line 303: `class TupleLit:     elems: PyList[Any]`
+- Line 305: `class LambdaExpr:   params: PyList[str]; body: Any`
+- Line 307: `class TernaryExpr:  then_expr: Any; cond: Any; else_expr: Any`
+- Line 309: `class StructLit:    type_name: str; fields: PyList[Tuple[str,Any]]`
+- Line 311: `class RangeLit:     start: Any; end: Any`
+- Line 313: `class SliceLit:`
+- Line 318: `class WildCard:     pass`
+- Line 320: `class TryOp:        value: Any`
+- Line 326: `class ParseError(Exception):`
+- Line 327: `def __init__(self, msg, line=0, col=0):`
+- Line 332: `class Parser:`
+- Line 333: `def __init__(self, tokens: PyList[Token], source: str = ''):`
+- Line 338: `def _tok_span(self, t) -> Span:`
+- Line 345: `def _set_span(self, node, t):`
+- Line 348: `def _set_span_range(self, node, start, end):`
+- Line 353: `def _span_of(self, node) -> Optional[Span]:`
+- Line 356: `def get_spans(self) -> dict:`
+- Line 359: `def peek(self, offset=0) -> Token:`
+- Line 363: `def check(self, *tts: TT) -> bool:`
+- Line 366: `def advance(self) -> Token:`
+- Line 371: `def expect(self, *tts: TT) -> Token:`
+- Line 378: `def match_tok(self, *tts: TT) -> Optional[Token]:`
+- Line 381: `def skip_semis(self):`
+- Line 386: `def parse(self) -> Program:`
+- Line 395: `def parse_top(self):`
+- Line 405: `def parse_import(self) -> ImportStmt:`
+- Line 412: `def parse_generics(self) -> PyList[str]:`
+- Line 421: `def parse_fn(self, is_pub=False, is_lazy=False) -> FnDef:`
+- Line 457: `def parse_class(self) -> ClassDef:`
+- Line 483: `def parse_type(self) -> str:`
+- Line 511: `def parse_block(self) -> PyList[Any]:`
+- Line 524: `def parse_stmt(self):`
+- Line 556: `def parse_var_decl(self) -> VarDecl:`
+- Line 589: `def parse_return(self) -> ReturnStmt:`
+- Line 597: `def parse_if(self) -> IfStmt:`
+- Line 614: `def parse_for(self) -> ForStmt:`
+- Line 635: `def parse_while(self) -> WhileStmt:`
+- Line 644: `def parse_match(self) -> MatchStmt:`
+- Line 663: `def parse_pattern(self):`
+- Line 673: `def parse_if_expr(self):`
+- Line 688: `def parse_expr(self):`
+- Line 696: `def _binop(self, left_gen, ops):`
+- Line 707: `def parse_or(self):`
+- Line 710: `def parse_and(self):`
+- Line 713: `def parse_compare(self):`
+- Line 716: `def parse_add(self):`
+- Line 719: `def parse_mul(self):`
+- Line 722: `def parse_unary(self):`
+- Line 732: `def parse_postfix(self):`
+- Line 831: `def parse_primary(self):`
+- Line 997: `struct Result {`
+- Line 1004: `struct _ox_OkHelper {`
+- Line 1016: `struct _ox_ErrHelper {`
+- Line 1048: `class Generator {`
+- Line 1058: `class Iterator {`
+- Line 1844: `def _split_args(s: str) -> PyList[str]:`
+- Line 1854: `def map_type(t: str) -> str:`
+- Line 1871: `class ModuleResolver:`
+- Line 1873: `def __init__(self, source_path: str = ''):`
+- Line 1878: `def _default_paths(self, source_path):`
+- Line 1890: `def add_search_path(self, p: str):`
+- Line 1894: `def resolve(self, module_path):`
+- Line 1915: `class GenTranspiler:`
+- Line 1923: `def __init__(self, cg, fn: FnDef):`
+- Line 1932: `def _state(self) -> int:`
+- Line 1937: `def _emit(self, *args):`
+- Line 1940: `def _case(self, s: int):`
+- Line 1943: `def _any_yield(self, stmts) -> bool:`
+- Line 1960: `def transpile(self):`
+- Line 1972: `def _infer_type_from(expr) -> str:`
+- Line 1986: `def _find_members(self, stmts):`
+- Line 2004: `def _get_inner_type(self) -> str:`
+- Line 2010: `def _emit_struct(self) -> str:`
+- Line 2038: `def _emit_wrapper(self) -> str:`
+- Line 2052: `def _gen_body(self, stmts):`
+- Line 2080: `def _gen_while(self, s: WhileStmt):`
+- Line 2092: `def _gen_if(self, s: IfStmt):`
+- Line 2113: `def _gen_if_stateful(self, s: IfStmt):`
+- Line 2150: `def _gen_for(self, s: ForStmt):`
+- Line 2188: `class CodeGen:`
+- Line 2189: `def __init__(self, module_namespace: str = '', modules: set = None):`
+- Line 2197: `def w(self, line=''):`
+- Line 2200: `def tmp(self) -> str:`
+- Line 2203: `def generate(self, prog: Program, include_runtime: bool = True) -> str:`
+- Line 2231: `def gen_top(self, node):`
+- Line 2240: `def gen_class(self, cls: ClassDef):`
+- Line 2254: `def gen_method(self, fn: FnDef):`
+- Line 2268: `def _has_yield(self, stmts) -> bool:`
+- Line 2285: `def gen_fn(self, fn: FnDef):`
+- Line 2337: `def gen_stmt(self, node):`
+- Line 2353: `def gen_var_decl(self, v: VarDecl):`
+- Line 2362: `def gen_assign(self, a: Assignment):`
+- Line 2365: `def gen_if(self, node: IfStmt):`
+- Line 2380: `def gen_for(self, node: ForStmt):`
+- Line 2395: `def gen_while(self, node: WhileStmt):`
+- Line 2401: `def gen_generator_fn(self, fn: FnDef):`
+- Line 2411: `def gen_match(self, node: MatchStmt):`
+- Line 2432: `def expr(self, node) -> str:`
+- Line 2594: `def _base_type(t: str) -> str:`
+- Line 2597: `def _type_params(t: str) -> PyList[str]:`
+- Line 2618: `class TypeChecker:`
+- Line 2619: `def __init__(self, spans: dict, source_file: SourceFile,`
+- Line 2655: `def _init_builtins(self):`
+- Line 2760: `def _push_scope(self):`
+- Line 2764: `def _pop_scope(self):`
+- Line 2775: `def _lookup_var(self, name: str) -> Optional[str]:`
+- Line 2782: `def _declare_var(self, name: str, ty: str, node) -> None:`
+- Line 2798: `def _error(self, msg: str, node, code: str = '', notes=None):`
+- Line 2805: `def _type_error(self, expected: str, found: str, node, detail: str = ''):`
+- Line 2815: `def _split_tuple_types(self, inner: str) -> PyList[str]:`
+- Line 2831: `def check(self, prog: Program) -> None:`
+- Line 2844: `def _infer_type(self, node) -> str:`
+- Line 2849: `def _infer_type_impl(self, node) -> str:`
+- Line 3203: `def _is_compatible(self, found: str, expected: str) -> bool:`
+- Line 3218: `def _check_stmt(self, node) -> None:`
+- Line 3400: `def fmt_error(src: str, path: str, msg: str, line: int = 0, col: int = 0) -> str:`
+- Line 3417: `def compile_source(src: str, path: str = '', check_only: bool = False,`
+- Line 3553: `def main():`
+
+--------------------
+
+## File: `compiler.ox`
+- Line 10: `class Node {`
+- Line 61: `fn alloc_node() -> int {`
+- Line 82: `fn node_ref(idx: int) -> Node { return node_pool[idx] }`
+- Line 85: `fn node_program(stmts: List<int>) -> int {`
+- Line 92: `fn node_fn_def(name: str, params: List<int>, return_type: str, body: List<int>,`
+- Line 107: `fn node_class_def(name: str, fields: List<int>, methods: List<int>, generics: List<int>) -> int {`
+- Line 117: `fn node_import(path: List<int>) -> int {`
+- Line 124: `fn node_var_decl(name: str, type_ann: str, value: int, is_mutable: bool) -> int {`
+- Line 134: `fn node_assign(target: int, value: int, op: str) -> int {`
+- Line 143: `fn node_return(value: int) -> int {`
+- Line 150: `fn node_yield_stmt(value: int) -> int {`
+- Line 157: `fn node_break() -> int {`
+- Line 163: `fn node_continue() -> int {`
+- Line 169: `fn node_if(cond: int, then_body: List<int>, elif_clauses: List<int>,`
+- Line 180: `fn node_for(var_name: str, iterable: int, body: List<int>) -> int {`
+- Line 189: `fn node_while(cond: int, body: List<int>) -> int {`
+- Line 197: `fn node_match(subject: int, arms: List<int>) -> int {`
+- Line 205: `fn node_expr_stmt(expr: int) -> int {`
+- Line 212: `fn node_bin_op(op: str, left: int, right: int) -> int {`
+- Line 221: `fn node_unary_op(op: str, operand: int) -> int {`
+- Line 229: `fn node_fn_call(func: int, args: List<int>) -> int {`
+- Line 237: `fn node_method_call(obj: int, name: str, args: List<int>) -> int {`
+- Line 246: `fn node_attr(obj: int, name: str) -> int {`
+- Line 254: `fn node_index(obj: int, idx: int) -> int {`
+- Line 262: `fn node_ident(name: str) -> int {`
+- Line 269: `fn node_int_lit(value: int) -> int {`
+- Line 276: `fn node_float_lit(value: float) -> int {`
+- Line 283: `fn node_str_lit(value: str) -> int {`
+- Line 290: `fn node_bool_lit(value: bool) -> int {`
+- Line 297: `fn node_none_lit() -> int {`
+- Line 303: `fn node_some_lit(value: int) -> int {`
+- Line 310: `fn node_list_lit(elems: List<int>) -> int {`
+- Line 317: `fn node_struct_lit(type_name: str, fields: List<int>) -> int {`
+- Line 325: `fn node_range_lit(start: int, end: int) -> int {`
+- Line 333: `fn node_try_op(operand: int) -> int {`
+- Line 340: `fn node_wild() -> int {`
+- Line 346: `fn node_param(name: str, ptype: str) -> int {`
+- Line 354: `fn node_field(name: str, value: int) -> int {`
+- Line 362: `fn node_elif(cond: int, body: List<int>) -> int {`
+- Line 370: `fn node_arm(pat: int, body: List<int>) -> int {`
+- Line 378: `fn node_str_id(value: str) -> int {`
+- Line 385: `fn set_span(node_id: int, line: int, col: int) -> void {`
+- Line 391: `fn report_error(src: str, line: int, col: int, msg: str) -> void {`
+- Line 418: `fn base_type(ty: str) -> str {`
+- Line 427: `fn type_params(ty: str) -> List<str> {`
+- Line 445: `class Span {`
+- Line 452: `class Diagnostic {`
+- Line 460: `fn make_diag(severity: str, msg: str, code: str, line: int, col: int) -> Diagnostic {`
+- Line 464: `fn render_diags(diags: List<Diagnostic>, src: str, path: str) -> List<str> {`
+- Line 474: `fn render_one(d: Diagnostic, src: str, path: str) -> str {`
+- Line 576: `fn keyword_type(word: str) -> str {`
+- Line 612: `class Token {`
+- Line 619: `fn make_token(type_name: str, value: str, line: int, col: int) -> Token {`
+- Line 624: `class Lexer {`
+- Line 630: `fn peek(self, offset: int) -> str {`
+- Line 636: `fn advance(self) -> str {`
+- Line 644: `fn skip_trivia(self) -> void {`
+- Line 665: `fn tokenize(self) -> List<Token> {`
+- Line 792: `class Parser {`
+- Line 798: `fn peek(self, offset: int) -> Token {`
+- Line 804: `fn check(self, type_names: List<str>) -> bool {`
+- Line 814: `fn advance(self) -> Token {`
+- Line 821: `fn span(self, node_id: int) -> int {`
+- Line 826: `fn expect(self, type_names: List<str>) -> Token {`
+- Line 842: `fn match_tok(self, type_names: List<str>) -> Token {`
+- Line 847: `fn matched(self, tok: Token) -> bool { return tok.type_name != "" }`
+- Line 849: `fn skip_semis(self) -> void {`
+- Line 854: `fn parse(self) -> int {`
+- Line 865: `fn parse_top(self) -> int {`
+- Line 885: `fn parse_import(self) -> int {`
+- Line 896: `fn parse_generics(self) -> List<int> {`
+- Line 909: `fn parse_fn(self, is_pub: bool, is_lazy: bool) -> int {`
+- Line 938: `fn parse_class(self) -> int {`
+- Line 968: `fn parse_type(self) -> str {`
+- Line 1001: `fn parse_block(self) -> List<int> {`
+- Line 1015: `fn parse_stmt(self) -> int {`
+- Line 1038: `fn parse_var_decl(self) -> int {`
+- Line 1048: `fn parse_return(self) -> int {`
+- Line 1054: `fn parse_yield(self) -> int {`
+- Line 1060: `fn parse_if(self) -> int {`
+- Line 1076: `fn parse_for(self) -> int {`
+- Line 1085: `fn parse_while(self) -> int {`
+- Line 1092: `fn parse_match(self) -> int {`
+- Line 1112: `fn parse_pattern(self) -> int {`
+- Line 1123: `fn parse_expr(self) -> int {`
+- Line 1132: `fn parse_or(self) -> int {`
+- Line 1143: `fn parse_and(self) -> int {`
+- Line 1154: `fn parse_compare(self) -> int {`
+- Line 1165: `fn parse_add(self) -> int {`
+- Line 1176: `fn parse_mul(self) -> int {`
+- Line 1187: `fn parse_unary(self) -> int {`
+- Line 1194: `fn parse_postfix(self) -> int {`
+- Line 1275: `fn parse_primary(self) -> int {`
+- Line 1391: `fn split_args(s: str) -> List<str> {`
+- Line 1410: `fn map_type(t: str) -> str {`
+- Line 1440: `class CodeGen {`
+- Line 1453: `fn w(self, line: str) -> void {`
+- Line 1463: `fn tmp_name(self) -> str {`
+- Line 1468: `fn expr(self, node_id: int) -> str {`
+- Line 1614: `fn gen_stmt(self, node_id: int) -> void {`
+- Line 1636: `fn gen_var_decl(self, node_id: int) -> void {`
+- Line 1646: `fn gen_assign(self, node_id: int) -> void {`
+- Line 1651: `fn gen_if(self, node_id: int) -> void {`
+- Line 1680: `fn gen_for(self, node_id: int) -> void {`
+- Line 1698: `fn gen_while(self, node_id: int) -> void {`
+- Line 1708: `fn gen_match(self, node_id: int) -> void {`
+- Line 1741: `fn _has_yield(self, stmt_ids: List<int>) -> bool {`
+- Line 1768: `fn _gen_next_state(self) -> int {`
+- Line 1774: `fn _gen_emit(self, line: str) -> void {`
+- Line 1778: `fn _gen_case(self, s: int) -> void {`
+- Line 1782: `fn _gen_get_inner_type(self, fn_id: int) -> str {`
+- Line 1794: `fn _gen_infer_type(self, expr_id: int) -> str {`
+- Line 1812: `fn _gen_find_members(self, stmt_ids: List<int>) -> void {`
+- Line 1848: `fn _gen_body(self, stmt_ids: List<int>) -> void {`
+- Line 1881: `fn _gen_while(self, s_id: int) -> void {`
+- Line 1894: `fn _gen_generator_for(self, s_id: int) -> void {`
+- Line 1935: `fn _gen_generator_if(self, s_id: int) -> void {`
+- Line 1968: `fn _gen_if_stateful(self, s_id: int) -> void {`
+- Line 2011: `fn _gen_emit_struct(self, fn_id: int) -> void {`
+- Line 2071: `fn _gen_emit_wrapper(self, fn_id: int) -> void {`
+- Line 2095: `fn gen_generator_fn(self, node_id: int) -> void {`
+- Line 2114: `fn gen_fn(self, node_id: int) -> void {`
+- Line 2161: `fn gen_class(self, node_id: int) -> void {`
+- Line 2193: `fn gen_method(self, node_id: int) -> void {`
+- Line 2212: `fn gen_top(self, node_id: int) -> void {`
+- Line 2230: `fn generate(self, prog_id: int) -> str {`
+- Line 2234: `fn generate_module(self, prog_id: int, mod_name: str) -> str {`
+- Line 2238: `fn _generate(self, prog_id: int, ns: str, include_runtime: bool) -> str {`
+- Line 3123: `class Binding {`
+- Line 3128: `fn substitute_type_params(t: str, bindings: List<Binding>) -> str {`
+- Line 3155: `class TypeChecker {`
+- Line 3175: `fn _bi(self, name: str, param_types: List<str>, ret: str) -> void {`
+- Line 3182: `fn init_builtins(self) -> void {`
+- Line 3267: `fn push_scope(self) -> void {`
+- Line 3271: `fn pop_scope(self) -> void {`
+- Line 3275: `fn declare_var(self, name: str, ty: str) -> void {`
+- Line 3291: `fn lookup_var(self, name: str) -> str {`
+- Line 3305: `fn find_fn(self, name: str) -> int {`
+- Line 3314: `fn find_fn_all(self, name: str) -> List<int> {`
+- Line 3324: `fn resolve_fn_call(self, name: str, arg_types: List<str>) -> int {`
+- Line 3363: `fn find_cls(self, name: str) -> int {`
+- Line 3372: `fn infer_type_bindings(self, expected: str, found: str) -> void {`
+- Line 3401: `fn is_generic(self, name: str) -> bool {`
+- Line 3411: `fn check(self, prog_id: int) -> void {`
+- Line 3465: `fn infer_type(self, node_id: int) -> str {`
+- Line 3471: `fn infer_type_impl(self, node_id: int) -> str {`
+- Line 3753: `fn is_compatible(self, found: str, expected: str) -> bool {`
+- Line 3763: `fn check_stmt(self, node_id: int) -> void {`
+- Line 3891: `fn err(self, msg: str, node_id: int, code: str) -> void {`
+- Line 3896: `fn type_err(self, expected: str, found: str, node_id: int) -> void {`
+- Line 3904: `fn check_source(src: str, source_path: str) -> void {`
+- Line 3932: `fn compile_source(src: str, source_path: str) -> int {`
+- Line 4073: `fn main() -> void {`
+
+--------------------
+
+## File: `ox_lsp.py`
+- Line 19: `def _log(msg: str):`
+- Line 60: `def _utf16_len(s: str) -> int:`
+- Line 64: `def _col_to_utf16(line_text: str, char_col: int) -> int:`
+- Line 68: `def _src_lines(source: str) -> PyList[str]:`
+- Line 77: `class LSPMessage:`
+- Line 85: `class LSPConnection:`
+- Line 86: `def __init__(self):`
+- Line 97: `def read_message(self) -> Optional[LSPMessage]:`
+- Line 127: `def send_notification(self, method: str, params: dict = None):`
+- Line 130: `def send_response(self, msg_id: int, result: Any = None):`
+- Line 133: `def send_error(self, msg_id: int, code: int, message: str):`
+- Line 137: `def _send(self, obj: dict):`
+- Line 150: `class Document:`
+- Line 156: `class LSPState:`
+- Line 157: `def __init__(self):`
+- Line 161: `def get_or_create(self, uri: str) -> Document:`
+- Line 183: `def get_diagnostics(source: str) -> PyList[dict]:`
+- Line 288: `def get_semantic_tokens(source: str) -> PyList[int]:`
+- Line 291: `def line_text(line0: int) -> str:`
+- Line 402: `def _measure_str_lit_length(source: str, line0: int, col0: int) -> int:`
+- Line 433: `def get_hover(source: str, line: int, col: int, filepath: str = '') -> Optional[dict]:`
+- Line 557: `def _find_node_in_stmt_list(stmts, target_id):`
+- Line 565: `def _recurse_find(node, target_id):`
+- Line 777: `def _parse_signatures(doc: str) -> list[dict]:`
+- Line 812: `def handle_initialize(msg: LSPMessage):`
+- Line 847: `def handle_did_open(msg: LSPMessage):`
+- Line 856: `def handle_did_change(msg: LSPMessage):`
+- Line 865: `def _publish_diagnostics(uri: str):`
+- Line 876: `def handle_hover(msg: LSPMessage):`
+- Line 892: `def _collect_symbols(stmts, seen, items):`
+- Line 921: `def handle_completion(msg: LSPMessage):`
+- Line 941: `def handle_semantic_tokens(msg: LSPMessage):`
+- Line 952: `def handle_formatting(msg: LSPMessage):`
+- Line 974: `def handle_shutdown(msg: LSPMessage):`
+- Line 979: `def handle_signature_help(msg: LSPMessage):`
+- Line 1092: `def cli_check(filepath: str):`
+- Line 1111: `def main():`
+
+--------------------
+
+## File: `ox_fmt.py`
+- Line 22: `def _escape(s: str) -> str:`
+- Line 31: `class Formatter:`
+- Line 32: `def __init__(self, indent_size: int = 4, max_line: int = 100,`
+- Line 43: `def _w(self, s: str = ''):`
+- Line 46: `def _ws(self):`
+- Line 50: `def _nl(self, text: str = ''):`
+- Line 57: `def _indent(self) -> str:`
+- Line 60: `def _push(self):`
+- Line 63: `def _pop(self):`
+- Line 66: `def _blank(self):`
+- Line 70: `def _blank_if_gap(self, prev, node):`
+- Line 76: `def _semi(self):`
+- Line 80: `def _flush_comments_before(self, node):`
+- Line 98: `def _flush_remaining_comments(self):`
+- Line 111: `def format(self, prog: Program,`
+- Line 132: `def _stmt(self, node):`
+- Line 151: `def _fn_def(self, node: FnDef):`
+- Line 188: `def _class_def(self, node: ClassDef):`
+- Line 209: `def _import(self, node: ImportStmt):`
+- Line 217: `def _var_decl(self, node: VarDecl):`
+- Line 228: `def _assign(self, node: Assignment):`
+- Line 237: `def _return(self, node: ReturnStmt):`
+- Line 245: `def _break(self, _):`
+- Line 250: `def _continue(self, _):`
+- Line 257: `def _if(self, node: IfStmt):`
+- Line 274: `def _for(self, node: ForStmt):`
+- Line 283: `def _while(self, node: WhileStmt):`
+- Line 290: `def _match(self, node: MatchStmt):`
+- Line 309: `def _expr_stmt(self, node: ExprStmt):`
+- Line 316: `def _block(self, body: PyList[Any]):`
+- Line 334: `def _pattern(self, node):`
+- Line 358: `def _expr(self, node):`
+- Line 444: `def format_source(source: str) -> str:`
+- Line 455: `def cli():`
+
+--------------------
+
+## File: `ox_diag.py`
+- Line 17: `class Style:`
+- Line 44: `class Span:`
+- Line 53: `def from_pos(pos: int, length: int, source: str = '', line: int = 1, col: int = 1) -> 'Span':`
+- Line 66: `def shift_left(self, n: int) -> 'Span':`
+- Line 69: `def merge(self, other: 'Span') -> 'Span':`
+- Line 81: `class Severity(Enum):`
+- Line 93: `class Diagnostic:`
+- Line 107: `class SourceFile:`
+- Line 108: `def __init__(self, source: str, path: str = ''):`
+- Line 117: `def offset_to_line_col(self, offset: int) -> Tuple[int, int]:`
+- Line 128: `def line_text(self, n: int) -> str:`
+- Line 157: `def render_diagnostics(diags: List[Diagnostic], src: SourceFile) -> str:`
+- Line 164: `def _render_one(d: Diagnostic, src: SourceFile, lines: List[str]) -> None:`
+- Line 182: `def _render_span(span: Span, src: SourceFile, lines: List[str],`
+- Line 245: `def highlight_ox(source: str) -> str:`
+- Line 314: `def print_highlighted(source: str, file=sys.stdout) -> None:`
+
+--------------------

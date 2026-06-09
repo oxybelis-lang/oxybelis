@@ -604,6 +604,134 @@ def _recurse_find(node, target_id):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  GO TO DEFINITION
+# ═══════════════════════════════════════════════════════════════
+
+def get_definition(source: str, line: int, col: int, uri: str) -> Optional[dict]:
+    """Return an LSP Location for the definition of the identifier at the given position."""
+    try:
+        tokens = Lexer(source).tokenize()
+        parser = Parser(tokens, source)
+        ast = parser.parse()
+        spans = parser.get_spans()
+
+        offset = 0
+        for _ in range(line):
+            npos = source.find('\n', offset)
+            if npos < 0:
+                break
+            offset = npos + 1
+        offset += col
+
+        best_id = None
+        best_span = None
+        for node_id, sp in spans.items():
+            if sp.start <= offset < sp.end:
+                span_len = sp.end - sp.start
+                if best_span is None or span_len < (best_span.end - best_span.start):
+                    best_span = sp
+                    best_id = node_id
+
+        if best_id is None:
+            return None
+
+        node_obj = _find_node_in_stmt_list(ast.stmts, best_id)
+        if node_obj is None or not isinstance(node_obj, Ident):
+            return None
+
+        name = node_obj.name
+        if name in _ALL_DOCS:
+            return None
+
+        defs = _build_def_index(ast.stmts, spans, len(source))
+        def_span = _resolve_def(name, offset, defs)
+        if def_span is None:
+            return None
+
+        return {
+            'uri': uri,
+            'range': {
+                'start': {'line': def_span.start_line - 1, 'character': def_span.start_col - 1},
+                'end': {'line': def_span.end_line - 1, 'character': def_span.end_col - 1},
+            }
+        }
+    except Exception:
+        return None
+
+
+def _build_def_index(stmts, spans, source_len: int) -> list:
+    """
+    Walk the AST and collect all definitions with scope boundaries.
+    Returns list of tuples: (name, def_span_or_None, scope_start, scope_end)
+    """
+    defs: list = []
+
+    def _walk(stmt_list, scope_start: int, scope_end: int):
+        for s in stmt_list:
+            if isinstance(s, FnDef):
+                s_span = spans.get(id(s))
+                if s_span:
+                    defs.append((s.name, s_span, scope_start, scope_end))
+                fn_ss = s_span.start if s_span else scope_start
+                fn_se = s_span.end if s_span else scope_end
+                for p in s.params:
+                    ps = spans.get(id(p[3])) if len(p) > 3 else None
+                    defs.append((p[0], ps, fn_ss, fn_se))
+                _walk(s.body, fn_ss, fn_se)
+
+            elif isinstance(s, ClassDef):
+                s_span = spans.get(id(s))
+                if s_span:
+                    defs.append((s.name, s_span, scope_start, scope_end))
+                _walk(s.methods, scope_start, scope_end)
+
+            elif isinstance(s, VarDecl):
+                ns = spans.get(id(s.name_node)) if hasattr(s, 'name_node') else None
+                defs.append((s.name, ns or spans.get(id(s)), scope_start, scope_end))
+
+            elif isinstance(s, IfStmt):
+                _walk(s.then_body, scope_start, scope_end)
+                for _, eb in s.elif_clauses:
+                    _walk(eb, scope_start, scope_end)
+                if s.else_body:
+                    _walk(s.else_body, scope_start, scope_end)
+
+            elif isinstance(s, ForStmt):
+                _walk(s.body, scope_start, scope_end)
+
+            elif isinstance(s, WhileStmt):
+                _walk(s.body, scope_start, scope_end)
+
+            elif isinstance(s, MatchStmt):
+                for _, arm_body in s.arms:
+                    _walk(arm_body, scope_start, scope_end)
+
+    _walk(stmts, 0, source_len)
+    return defs
+
+
+def _resolve_def(name: str, offset: int, defs: list) -> Optional[Span]:
+    """Find the best definition for *name* at source *offset*."""
+    candidates = [(span, ss, se) for n, span, ss, se in defs if n == name and span is not None]
+    if not candidates:
+        return None
+
+    best = None
+    best_size = None
+    for span, ss, se in candidates:
+        if ss <= offset <= se:
+            size = se - ss
+            if best is None or size < best_size:
+                best = span
+                best_size = size
+
+    if best is None:
+        best = candidates[0][0]
+
+    return best
+
+
+# ═══════════════════════════════════════════════════════════════
 #  COMPLETIONS
 # ═══════════════════════════════════════════════════════════════
 
@@ -846,6 +974,7 @@ def handle_initialize(msg: LSPMessage):
                 'range': False,
                 'full': {'delta': False},
             },
+            'definitionProvider': True,
             'hoverProvider': True,
             'completionProvider': {
                 'triggerCharacters': [':', '.', '<'],
@@ -1358,6 +1487,18 @@ def handle_formatting(msg: LSPMessage):
         conn.send_error(msg.id, -32603, str(e))
 
 
+def handle_definition(msg: LSPMessage):
+    params = msg.params
+    uri = params['textDocument']['uri']
+    pos = params['position']
+    doc = state.documents.get(uri)
+    if not doc:
+        conn.send_response(msg.id, None)
+        return
+    result = get_definition(doc.source, pos['line'], pos['character'], uri)
+    conn.send_response(msg.id, result)
+
+
 def handle_shutdown(msg: LSPMessage):
     conn.send_response(msg.id, None)
     sys.exit(0)
@@ -1462,6 +1603,7 @@ _HANDLERS = {
     'initialized':                        lambda msg: None,
     'textDocument/didOpen':               handle_did_open,
     'textDocument/didChange':             handle_did_change,
+    'textDocument/definition':            handle_definition,
     'textDocument/hover':                 handle_hover,
     'textDocument/completion':            handle_completion,
     'textDocument/signatureHelp':         handle_signature_help,

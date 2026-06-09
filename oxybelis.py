@@ -1091,6 +1091,8 @@ inline List<std::string> _ox_make_list(std::initializer_list<const char*> il) {
 inline std::string str(const std::string& v){ return v; }
 inline std::string str(const char* v)     { return std::string(v); }
 inline std::string str(int v)        { return std::to_string(v); }
+inline std::string str(long long v)  { return std::to_string(v); }
+inline std::string str(unsigned long long v) { return std::to_string(v); }
 inline std::string str(double v)     { return std::to_string(v); }
 inline std::string str(bool v)       { return v?"true":"false"; }
 template<typename T>
@@ -2282,6 +2284,11 @@ class CodeGen:
             self.gen_class(node_class)  # full def early so List<Node> globals are valid
         if any(isinstance(s, ClassDef) and s is not node_class for s in prog.stmts):
             self.w('')
+        # Forward-declare all free functions so they can reference each other
+        for s in prog.stmts:
+            if isinstance(s, FnDef):
+                self.gen_fn_decl(s)
+        self.w('')
         for s in prog.stmts:
             if s is node_class: continue
             self.gen_top(s)
@@ -2394,6 +2401,44 @@ class CodeGen:
             for s in fn.body: self.gen_stmt(s)
         self.depth -= 1
         self.w('}'); self.w('')
+
+    def gen_fn_decl(self, fn: FnDef):
+        """Forward-declare a free function so it can be referenced before definition."""
+        if self._has_yield(fn.body):
+            return
+        if fn.generics:
+            param_types = {t for _, t, *_ in fn.params}
+            used_in_params = set()
+            for pt in param_types:
+                for g in fn.generics:
+                    if g in pt:
+                        used_in_params.add(g)
+            defaults = []
+            for g in fn.generics:
+                if g not in used_in_params:
+                    defaults.append(f"typename {g} = int")
+                else:
+                    defaults.append(f"typename {g}")
+            self.w(f"template<{', '.join(defaults)}>")
+        params_list = list(fn.params)
+        primitives = {'int', 'float', 'bool', 'str', 'void'}
+        generic_set = set(fn.generics)
+        parts = []
+        for n, t, dflt, *_ in params_list:
+            base = _base_type(t)
+            if base not in primitives and base not in ('List', 'Map', 'Option') and base not in generic_set:
+                p = f"{map_type(t)}& {n}"
+            else:
+                p = f"{map_type(t)} {n}"
+            if dflt is not None:
+                p += f" = {self.expr(dflt)}"
+            parts.append(p)
+        params = ', '.join(parts)
+        ret = 'int' if fn.name == 'main' else map_type(fn.return_type)
+        if fn.name == 'main':
+            self.w(f"int main(int argc, char* argv[]);")
+        else:
+            self.w(f"{ret} {fn.name}({params});")
 
     # ── Statements ─────────────────────────────────────────────
 
@@ -2635,7 +2680,9 @@ class CodeGen:
             elems = ', '.join(self.expr(e) for e in node.elems)
             if not elems:
                 lt = getattr(node, '_type', '')
-                return f'{map_type(lt)}()' if lt else 'List<int>()'
+                if lt:
+                    return f'{map_type(lt)}()'
+                return '{}'
             return '_ox_make_list({' + elems + '})'
         if isinstance(node, TupleLit):
             elems = ', '.join(self.expr(e) for e in node.elems)
@@ -2915,7 +2962,10 @@ class TypeChecker:
 
     def _infer_type(self, node) -> str:
         t = self._infer_type_impl(node)
-        node._type = t
+        # Don't set _type for empty ListLit — let explicit propagation set it instead.
+        # This prevents emitting List<void>() in generated C++.
+        if not (isinstance(node, ListLit) and not node.elems):
+            node._type = t
         return t
 
     def _infer_type_impl(self, node) -> str:
@@ -3245,11 +3295,17 @@ class TypeChecker:
             self._type_error('List|str|Map', obj_t, node.obj)
             return 'void'
         if isinstance(node, StructLit):
-            for _, fv in node.fields:
-                self._infer_type(fv)
             base = _base_type(node.type_name)
             if base in self.classes:
+                cls = self.classes[base]
+                field_map = dict(cls.fields)
+                for fn, fv in node.fields:
+                    self._infer_type(fv)
+                    if isinstance(fv, ListLit) and not fv.elems and fn in field_map:
+                        fv._type = field_map[fn]
                 return node.type_name
+            for _, fv in node.fields:
+                self._infer_type(fv)
             self._error(f"no class named `{node.type_name}`", node, 'E0412')
             return node.type_name
         if isinstance(node, TupleLit):
@@ -3349,6 +3405,8 @@ class TypeChecker:
                 val_t = self._infer_type(node.value)
                 if self.in_fn_ret and not self._is_compatible(val_t, self.in_fn_ret):
                     self._type_error(self.in_fn_ret, val_t, node.value)
+                if isinstance(node.value, ListLit) and not node.value.elems and self.in_fn_ret:
+                    node.value._type = self.in_fn_ret
             elif self.in_fn_ret and self.in_fn_ret != 'void':
                 self._error(f"expected `{self.in_fn_ret}` return value", node, 'E0057')
             self._unreachable = True
