@@ -1091,6 +1091,8 @@ inline List<std::string> _ox_make_list(std::initializer_list<const char*> il) {
 inline std::string str(const std::string& v){ return v; }
 inline std::string str(const char* v)     { return std::string(v); }
 inline std::string str(int v)        { return std::to_string(v); }
+inline std::string str(long v)       { return std::to_string(v); }
+inline std::string str(unsigned long v) { return std::to_string(v); }
 inline std::string str(long long v)  { return std::to_string(v); }
 inline std::string str(unsigned long long v) { return std::to_string(v); }
 inline std::string str(double v)     { return std::to_string(v); }

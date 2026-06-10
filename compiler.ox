@@ -2392,6 +2392,8 @@ class CodeGen {
             self.w("inline std::string str(const std::string& v){ return v; }")
             self.w("inline std::string str(const char* v){ return std::string(v); }")
             self.w("inline std::string str(int v) { return std::to_string(v); }")
+            self.w("inline std::string str(long v) { return std::to_string(v); }")
+            self.w("inline std::string str(unsigned long v) { return std::to_string(v); }")
             self.w("inline std::string str(long long v) { return std::to_string(v); }")
             self.w("inline std::string str(unsigned long long v) { return std::to_string(v); }")
             self.w("inline std::string str(double v) { return std::to_string(v); }")
