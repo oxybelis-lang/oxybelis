@@ -154,6 +154,8 @@
 5. [x] **Default parameter values** — `fn f(a: int = 5)`
 6. [x] **Variadic `print`** — `print(a, b, c)` space-separated
 7. [x] **LSP recursive symbol completion** — suggests vars inside fn bodies
-8. [ ] **Bootstrap hardening** — verify generator state-machine codegen works in self-hosted output; test self-hosted compile of `oxlib/` modules; fight-test with real-world `.ox` files
+8. [x] **Bootstrap hardening** — verify generator state-machine codegen works in self-hosted output; test self-hosted compile of `oxlib/` modules; fight-test with real-world `.ox` files
+    - [x] Fix `declare_var`/`pop_scope` empty-scope crash in `compiler.ox` and `oxybelis.py`
+    - [x] Clean stale build artifacts and log files
 9. [ ] **LSP features** — go-to-definition, find references, rename
 10. [ ] **Math module discussion** — Eigen vs MKL vs custom

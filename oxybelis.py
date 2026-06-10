@@ -12,7 +12,7 @@ import sys
 import os
 from dataclasses import dataclass, field
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 __version_info__ = (0, 4, 0)
 from typing import Optional, List as PyList, Any, Tuple
 from enum import Enum, auto
@@ -2881,6 +2881,8 @@ class TypeChecker:
         self._used.append(set())
 
     def _pop_scope(self):
+        if not self.vars or not self._used:
+            return
         unused = set(self.vars[-1]) - self._used[-1]
         for var in unused:
             if not var.startswith('_'):
@@ -2899,6 +2901,8 @@ class TypeChecker:
         return None
 
     def _declare_var(self, name: str, ty: str, node) -> None:
+        if not self.vars:
+            return
         if name in self.vars[-1]:
             sp = self.spans.get(id(node))
             self.diags.append(Diagnostic(

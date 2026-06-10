@@ -3352,10 +3352,11 @@ class TypeChecker {
     }
 
     fn pop_scope(self) -> void {
-        pop(self.scopes)
+        if len(self.scopes) > 0 { pop(self.scopes) }
     }
 
     fn declare_var(self, name: str, ty: str) -> void {
+        if len(self.scopes) == 0 { return }
         let si = len(self.scopes) - 1
         var exists = false
         var i = 0

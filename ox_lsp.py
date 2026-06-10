@@ -986,7 +986,7 @@ def handle_initialize(msg: LSPMessage):
         },
         'serverInfo': {
             'name': 'ox-lsp',
-            'version': '0.4.0',
+            'version': '0.5.0',
         }
     })
 
