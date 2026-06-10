@@ -1544,6 +1544,15 @@ class CodeGen {
                 as = as + self.expr(node.args[i])
                 i = i + 1
             }
+            if func_node.kind == "Ident" and func_node.name == "sorted" {
+                return "_ox_sorted(" + as + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "list" {
+                return "_ox_list_from_str(" + as + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "enumerate" {
+                return "_ox_enumerate(" + as + ")"
+            }
             return fn_name + "(" + as + ")"
         }
         if node.kind == "MethodCall" {
@@ -1598,7 +1607,8 @@ class CodeGen {
                 es = es + self.expr(node.elems[i])
                 i = i + 1
             }
-            return "{" + es + "}"
+            if es == "" { return "{}" }
+            return "_ox_make_list({" + es + "})"
         }
         if node.kind == "StructLit" {
             var fs: str = ""
@@ -2298,6 +2308,21 @@ class CodeGen {
             self.w("template<typename T> using Set = std::unordered_set<T>;")
             self.w("template<typename T> using Option = std::optional<T>;")
             self.w("")
+            self.w("// ── make_list (initializer_list helper) ───")
+            self.w("template<typename T>")
+            self.w("List<T> _ox_make_list(std::initializer_list<T> il) {")
+            self.depth = self.depth + 1
+            self.w("return List<T>(il);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline List<std::string> _ox_make_list(std::initializer_list<const char*> il) {")
+            self.depth = self.depth + 1
+            self.w("List<std::string> r;")
+            self.w("for (auto* s : il) r.push_back(std::string(s));")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
             self.w("template<typename T> Option<T> Some(T val) { return std::optional<T>(val); }")
             self.w("inline constexpr std::nullopt_t None = std::nullopt;")
             self.w("")
@@ -2367,12 +2392,8 @@ class CodeGen {
             self.w("inline std::string str(const std::string& v){ return v; }")
             self.w("inline std::string str(const char* v){ return std::string(v); }")
             self.w("inline std::string str(int v) { return std::to_string(v); }")
-            self.w("inline std::string str(unsigned int v) { return std::to_string(v); }")
-            self.w("inline std::string str(long v) { return std::to_string(v); }")
-            self.w("inline std::string str(unsigned long v) { return std::to_string(v); }")
             self.w("inline std::string str(long long v) { return std::to_string(v); }")
             self.w("inline std::string str(unsigned long long v) { return std::to_string(v); }")
-            self.w("inline std::string str(float v) { return std::to_string(v); }")
             self.w("inline std::string str(double v) { return std::to_string(v); }")
             self.w("inline std::string str(bool v) { return v?\"true\":\"false\"; }")
             self.w("template<typename T> std::string str(const std::optional<T>& v){")
