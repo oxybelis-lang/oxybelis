@@ -209,6 +209,22 @@ fn node_expr_stmt(expr: int) -> int {
     return id
 }
 
+fn node_defer_stmt(expr: int) -> int {
+    let id = alloc_node()
+    node_pool[id].kind = "DeferStmt"
+    node_pool[id].inner = expr
+    return id
+}
+
+fn node_try_catch(try_body: List<int>, catch_var: str, catch_body: List<int>) -> int {
+    let id = alloc_node()
+    node_pool[id].kind = "TryCatchStmt"
+    node_pool[id].then_body = try_body
+    node_pool[id].name = catch_var
+    node_pool[id].else_body = catch_body
+    return id
+}
+
 fn node_bin_op(op: str, left: int, right: int) -> int {
     let id = alloc_node()
     node_pool[id].kind = "BinOp"
@@ -571,6 +587,9 @@ let TT_COMMA        = "COMMA"
 let TT_SEMI         = "SEMI"
 let TT_UNDERSCORE   = "UNDERSCORE"
 let TT_YIELD        = "YIELD"
+let TT_DEFER        = "DEFER"
+let TT_TRY          = "TRY"
+let TT_CATCH        = "CATCH"
 let TT_EOF          = "EOF"
 
 fn keyword_type(word: str) -> str {
@@ -599,6 +618,9 @@ fn keyword_type(word: str) -> str {
     if word == "break"    { return TT_BREAK }
     if word == "continue" { return TT_CONTINUE }
     if word == "yield"    { return TT_YIELD }
+    if word == "defer"    { return TT_DEFER }
+    if word == "try"      { return TT_TRY }
+    if word == "catch"    { return TT_CATCH }
     if word == "int"      { return TT_T_INT }
     if word == "float"    { return TT_T_FLOAT }
     if word == "bool"     { return TT_T_BOOL }
@@ -972,8 +994,13 @@ class Parser {
         if t.type_name == TT_T_BOOL  { self.advance(); return "bool" }
         if t.type_name == TT_T_STR   { self.advance(); return "str" }
         if t.type_name == TT_T_VOID  { self.advance(); return "void" }
-        if t.type_name == TT_IDENT {
-            let name: str = self.advance().lexeme
+            if t.type_name == TT_IDENT {
+            var name: str = self.advance().lexeme
+            if name == "list" { name = "List" }
+            elif name == "option" { name = "Option" }
+            elif name == "result" { name = "Result" }
+            elif name == "map" { name = "Map" }
+            elif name == "set" { name = "Set" }
             if self.matched(self.match_tok([TT_LT])) {
                 let args: List<str> = []
                 while not self.check([TT_GT]) {
@@ -1023,6 +1050,19 @@ class Parser {
         if self.check([TT_FN])             { return self.parse_fn(false, false) }
         if self.check([TT_BREAK])          { self.advance(); return self.span(node_break()) }
         if self.check([TT_CONTINUE])       { self.advance(); return self.span(node_continue()) }
+        if self.check([TT_DEFER]) {
+            self.advance()
+            let expr: int = self.parse_expr()
+            return self.span(node_defer_stmt(expr))
+        }
+        if self.check([TT_TRY]) {
+            self.advance()
+            let try_body: List<int> = self.parse_block()
+            self.expect([TT_CATCH])
+            let catch_tok: Token = self.expect([TT_IDENT])
+            let catch_body: List<int> = self.parse_block()
+            return self.span(node_try_catch(try_body, catch_tok.lexeme, catch_body))
+        }
         let expr: int = self.parse_expr()
         if self.check([TT_ASSIGN, TT_PLUS_ASSIGN, TT_MINUS_ASSIGN,
                        TT_STAR_ASSIGN, TT_SLASH_ASSIGN]) {
@@ -1443,6 +1483,7 @@ class CodeGen {
     in_class: str
     tmp_counter: int
     modules: List<str>
+    in_try: int
     // Generator state-machine temporaries
     _gen_lines: List<str>
     _gen_state: int
@@ -1500,7 +1541,10 @@ class CodeGen {
         }
         if node.kind == "NoneLit"  { return "std::nullopt" }
         if node.kind == "SomeLit"  { return "Some(" + self.expr(node.inner) + ")" }
-        if node.kind == "TryOp"    { return "_ox_try(" + self.expr(node.operand) + ")" }
+        if node.kind == "TryOp" {
+            if self.in_try > 0 { return "_ox_try_throw(" + self.expr(node.operand) + ")" }
+            return "_ox_try(" + self.expr(node.operand) + ")"
+        }
         if node.kind == "WildCard" { return "_" }
         if node.kind == "Ident" {
             if node.name == "self" and self.in_class != "" { return "(*this)" }
@@ -1553,6 +1597,13 @@ class CodeGen {
             if func_node.kind == "Ident" and func_node.name == "enumerate" {
                 return "_ox_enumerate(" + as + ")"
             }
+            if func_node.kind == "Ident" and func_node.name == "batched" {
+                return "_ox_batched(" + as + ")"
+            }
+            if func_node.kind == "Ident" and func_node.name == "assert" {
+                if len(node.args) == 1 { return "_ox_assert(" + as + ")" }
+                return "_ox_assert_msg(" + as + ")"
+            }
             return fn_name + "(" + as + ")"
         }
         if node.kind == "MethodCall" {
@@ -1575,8 +1626,13 @@ class CodeGen {
             if is_mod {
                 return "_oxm_" + obj_str + "::" + mname + "(" + as + ")"
             }
+            // Option methods
+            let obj_type: str = node_pool[node.obj].node_type
+            let obj_base: str = base_type(obj_type)
+            if obj_base == "Option" and node.name == "is_some" { return obj_str + ".has_value()" }
+            if obj_base == "Option" and node.name == "is_none" { return "!" + obj_str + ".has_value()" }
             // Built-in list chaining methods
-            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" or node.name == "combinations" or node.name == "permutations" or node.name == "chunked" or node.name == "windowed" or node.name == "pairwise" or node.name == "reversed" or node.name == "cycle" or node.name == "take_while" or node.name == "drop_while" or node.name == "sorted" {
+            if node.name == "map" or node.name == "filter" or node.name == "reduce" or node.name == "for_each" or node.name == "each" or node.name == "any" or node.name == "all" or node.name == "find" or node.name == "sum" or node.name == "min" or node.name == "max" or node.name == "combinations" or node.name == "permutations" or node.name == "chunked" or node.name == "batched" or node.name == "windowed" or node.name == "pairwise" or node.name == "reversed" or node.name == "cycle" or node.name == "take_while" or node.name == "drop_while" or node.name == "sorted" {
                 if node.name == "sorted" {
                     if as != "" { return "_ox_sorted(" + obj_str + ", " + as + ")" }
                     return "_ox_sorted(" + obj_str + ")"
@@ -1648,6 +1704,26 @@ class CodeGen {
             self.w("/* unexpected yield outside generator */")
         }
         elif node.kind == "ExprStmt"     { self.w(self.expr(node.inner) + ";") }
+        elif node.kind == "DeferStmt" {
+            let t = self.tmp_name()
+            self.w("_ox_defer_impl " + t + "([&]() { " + self.expr(node.inner) + "; });")
+        }
+        elif node.kind == "TryCatchStmt" {
+            self.in_try = self.in_try + 1
+            self.w("try {")
+            self.depth = self.depth + 1
+            var ti = 0
+            while ti < len(node.then_body) { self.gen_stmt(node.then_body[ti]); ti = ti + 1 }
+            self.depth = self.depth - 1
+            self.in_try = self.in_try - 1
+            self.w("} catch (const _ox_try_exception& _ox_err) {")
+            self.depth = self.depth + 1
+            self.w("std::string " + node.name + " = _ox_err.msg;")
+            var ci = 0
+            while ci < len(node.else_body) { self.gen_stmt(node.else_body[ci]); ci = ci + 1 }
+            self.depth = self.depth - 1
+            self.w("}")
+        }
         elif node.kind == "FnDef"        { self.gen_fn(node_id) }
         else { self.w("/* unhandled " + node.kind + " */") }
     }
@@ -1777,6 +1853,10 @@ class CodeGen {
             }
             if s.kind == "ForStmt" {
                 if self._has_yield(s.body) { return true }
+            }
+            if s.kind == "TryCatchStmt" {
+                if self._has_yield(s.then_body) { return true }
+                if self._has_yield(s.else_body) { return true }
             }
             i = i + 1
         }
@@ -2272,6 +2352,8 @@ class CodeGen {
             self.w("#include <iomanip>")
             self.w("#include <fstream>")
             self.w("#include <random>")
+            self.w("#include <regex>")
+            self.w("#include <chrono>")
             self.w("#include <cstdlib>")
             self.w("#include <cctype>")
             self.w("#include <filesystem>")
@@ -2298,6 +2380,8 @@ class CodeGen {
             self.w("#include <NumCpp/Functions/min.hpp>")
             self.w("#include <NumCpp/Functions/max.hpp>")
             self.w("#include <NumCpp/Linalg.hpp>")
+            self.w("#include <variant>")
+            self.w("#include <map>")
             self.w("#ifdef _WIN32")
             self.w("#include <windows.h>")
             self.w("#endif")
@@ -2325,6 +2409,259 @@ class CodeGen {
             self.w("")
             self.w("template<typename T> Option<T> Some(T val) { return std::optional<T>(val); }")
             self.w("inline constexpr std::nullopt_t None = std::nullopt;")
+            self.w("")
+            self.w("// ── JsonValue ───")
+            self.w("struct JsonValue;")
+            self.w("inline std::string _json_ser(const JsonValue& v);")
+            self.w("inline JsonValue _json_parse(const std::string& s);")
+            self.w("struct JsonValue {")
+            self.depth = self.depth + 1
+            self.w("std::variant<std::nullptr_t, bool, int64_t, double, std::string, std::vector<JsonValue>, std::unordered_map<std::string, JsonValue>> data;")
+            self.w("JsonValue() : data(nullptr) {}")
+            self.w("JsonValue(std::nullptr_t) : data(nullptr) {}")
+            self.w("JsonValue(bool b) : data(b) {}")
+            self.w("JsonValue(int i) : data(static_cast<int64_t>(i)) {}")
+            self.w("JsonValue(int64_t i) : data(i) {}")
+            self.w("JsonValue(double d) : data(d) {}")
+            self.w("JsonValue(const std::string& s) : data(s) {}")
+            self.w("JsonValue(const char* s) : data(std::string(s)) {}")
+            self.w("JsonValue(const std::vector<JsonValue>& arr) : data(arr) {}")
+            self.w("JsonValue(const std::unordered_map<std::string, JsonValue>& obj) : data(obj) {}")
+            self.w("bool is_null()   const { return std::holds_alternative<std::nullptr_t>(data); }")
+            self.w("bool is_bool()   const { return std::holds_alternative<bool>(data); }")
+            self.w("bool is_int()    const { return std::holds_alternative<int64_t>(data); }")
+            self.w("bool is_float()  const { return std::holds_alternative<double>(data); }")
+            self.w("bool is_str()    const { return std::holds_alternative<std::string>(data); }")
+            self.w("bool is_list()   const { return std::holds_alternative<std::vector<JsonValue>>(data); }")
+            self.w("bool is_dict()   const { return std::holds_alternative<std::unordered_map<std::string, JsonValue>>(data); }")
+            self.w("bool as_bool()              const { return std::get<bool>(data); }")
+            self.w("int64_t as_int()            const { return std::get<int64_t>(data); }")
+            self.w("double as_float()           const { return std::get<double>(data); }")
+            self.w("std::string as_str()        const { return std::get<std::string>(data); }")
+            self.w("std::vector<JsonValue> as_list()   const { return std::get<std::vector<JsonValue>>(data); }")
+            self.w("std::unordered_map<std::string, JsonValue> as_dict() const { return std::get<std::unordered_map<std::string, JsonValue>>(data); }")
+            self.w("size_t size() const {")
+            self.depth = self.depth + 1
+            self.w("if (is_list()) return std::get<std::vector<JsonValue>>(data).size();")
+            self.w("if (is_dict()) return std::get<std::unordered_map<std::string, JsonValue>>(data).size();")
+            self.w("return 0;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("bool contains(const std::string& key) const {")
+            self.depth = self.depth + 1
+            self.w("if (!is_dict()) return false;")
+            self.w("auto& m = std::get<std::unordered_map<std::string, JsonValue>>(data);")
+            self.w("return m.find(key) != m.end();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("std::vector<std::string> keys() const {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("if (is_dict()) {")
+            self.depth = self.depth + 1
+            self.w("auto& m = std::get<std::unordered_map<std::string, JsonValue>>(data);")
+            self.w("for (auto& kv : m) r.push_back(kv.first);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("void set(const std::string& key, const JsonValue& val) {")
+            self.depth = self.depth + 1
+            self.w("if (!is_dict()) data = std::unordered_map<std::string, JsonValue>();")
+            self.w("std::get<std::unordered_map<std::string, JsonValue>>(data)[key] = val;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("void push(const JsonValue& val) {")
+            self.depth = self.depth + 1
+            self.w("if (!is_list()) data = std::vector<JsonValue>();")
+            self.w("std::get<std::vector<JsonValue>>(data).push_back(val);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("std::string serialize() const { return _json_ser(*this); }")
+            self.w("static JsonValue parse(const std::string& s) { return _json_parse(s); }")
+            self.depth = self.depth - 1
+            self.w("};")
+            self.w("// ── JsonValue serialization ───")
+            self.w("inline std::string _json_esc(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::string r; r.reserve(s.size()+2); r+='\"';")
+            self.w("for(char c:s){")
+            self.depth = self.depth + 1
+            self.w("switch(c){")
+            self.w("case'\"':r+=\"\\\\\\\"\";break;")
+            self.w("case'\\\\':r+=\"\\\\\\\\\";break;")
+            self.w("case'\\b':r+=\"\\\\b\";break;")
+            self.w("case'\\f':r+=\"\\\\f\";break;")
+            self.w("case'\\n':r+=\"\\\\n\";break;")
+            self.w("case'\\r':r+=\"\\\\r\";break;")
+            self.w("case'\\t':r+=\"\\\\t\";break;")
+            self.w("default:if((unsigned char)c<0x20){std::ostringstream ss;ss<<\"\\\\u\"<<std::hex<<std::setw(4)<<std::setfill('0')<<(int)(unsigned char)c;r+=ss.str();}else{r+=c;}")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("r+='\"';return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _json_ser(const JsonValue& v) {")
+            self.depth = self.depth + 1
+            self.w("if(v.is_null()) return \"null\";")
+            self.w("if(v.is_bool()) return v.as_bool()?\"true\":\"false\";")
+            self.w("if(v.is_int()) return std::to_string(v.as_int());")
+            self.w("if(v.is_float()){std::ostringstream ss;ss<<v.as_float();return ss.str();}")
+            self.w("if(v.is_str()) return _json_esc(v.as_str());")
+            self.w("if(v.is_list()){")
+            self.depth = self.depth + 1
+            self.w("auto arr=v.as_list();std::string r=\"[\";")
+            self.w("for(size_t i=0;i<arr.size();i++){if(i)r+=\",\";r+=_json_ser(arr[i]);}")
+            self.w("return r+\"]\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("if(v.is_dict()){")
+            self.depth = self.depth + 1
+            self.w("auto obj=v.as_dict();std::string r=\"{\";bool first=true;")
+            self.w("for(auto& kv:obj){if(!first)r+=\",\";first=false;r+=_json_esc(kv.first)+\":\"+_json_ser(kv.second);}")
+            self.w("return r+\"}\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return \"null\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _json_pret(const JsonValue& v,const std::string& indent,int depth) {")
+            self.depth = self.depth + 1
+            self.w("auto ind=[&](int d){std::string r;for(int i=0;i<d;i++)r+=indent;return r;};")
+            self.w("if(v.is_null()) return \"null\";")
+            self.w("if(v.is_bool()) return v.as_bool()?\"true\":\"false\";")
+            self.w("if(v.is_int()) return std::to_string(v.as_int());")
+            self.w("if(v.is_float()){std::ostringstream ss;ss<<v.as_float();return ss.str();}")
+            self.w("if(v.is_str()) return _json_esc(v.as_str());")
+            self.w("if(v.is_list()){auto arr=v.as_list();if(arr.empty())return\"[]\";")
+            self.depth = self.depth + 1
+            self.w("std::string r=\"[\\n\";")
+            self.w("for(size_t i=0;i<arr.size();i++){if(i)r+=\",\\n\";r+=ind(depth+1)+_json_pret(arr[i],indent,depth+1);}")
+            self.w("r+=\"\\n\"+ind(depth)+\"]\";return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("if(v.is_dict()){auto obj=v.as_dict();if(obj.empty())return\"{}\";")
+            self.depth = self.depth + 1
+            self.w("std::string r=\"{\\n\";bool first=true;")
+            self.w("for(auto& kv:obj){if(!first)r+=\",\\n\";first=false;r+=ind(depth+1)+_json_esc(kv.first)+\": \"+_json_pret(kv.second,indent,depth+1);}")
+            self.w("r+=\"\\n\"+ind(depth)+\"}\";return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return \"null\";")
+            self.depth = self.depth - 1
+            self.w("}")
+            // ── JsonValue parsing ───
+            self.w("inline void _json_skip_ws(const std::string& s,size_t& i){")
+            self.depth = self.depth + 1
+            self.w("while(i<s.size()&&(s[i]==' '||s[i]=='\\t'||s[i]=='\\n'||s[i]=='\\r'))i++;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _json_parse_str(const std::string& s,size_t& i){")
+            self.depth = self.depth + 1
+            self.w("std::string r;if(i>=s.size()||s[i]!='\"')return r;i++;")
+            self.w("while(i<s.size()&&s[i]!='\"'){")
+            self.depth = self.depth + 1
+            self.w("if(s[i]=='\\\\'){i++;if(i>=s.size())break;")
+            self.depth = self.depth + 1
+            self.w("switch(s[i]){case'\"':r+='\"';break;case'\\\\':r+='\\\\';break;case'/':r+='/';break;case'b':r+='\\b';break;case'f':r+='\\f';break;case'n':r+='\\n';break;case'r':r+='\\r';break;case't':r+='\\t';break;case'u':{std::string hex=s.substr(i+1,4);if(hex.size()==4){unsigned int cp;std::istringstream(hex)>>std::hex>>cp;r+=static_cast<char>(cp);}i+=4;break;}default:r+=s[i];}")
+            self.depth = self.depth - 1
+            self.w("i++;}else{r+=s[i];i++;}")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("if(i<s.size())i++;return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline JsonValue _json_parse_val(const std::string& s,size_t& i);")
+            self.w("inline JsonValue _json_parse(const std::string& s){")
+            self.depth = self.depth + 1
+            self.w("size_t i=0;_json_skip_ws(s,i);return _json_parse_val(s,i);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline JsonValue _json_parse_val(const std::string& s,size_t& i){")
+            self.depth = self.depth + 1
+            self.w("_json_skip_ws(s,i);if(i>=s.size())return JsonValue(nullptr);")
+            self.w("if(s[i]=='\"')return JsonValue(_json_parse_str(s,i));")
+            self.w("if(s[i]=='{'){")
+            self.depth = self.depth + 1
+            self.w("i++;std::unordered_map<std::string,JsonValue> obj;_json_skip_ws(s,i);")
+            self.w("if(i<s.size()&&s[i]=='}'){i++;return JsonValue(obj);}")
+            self.w("while(1){_json_skip_ws(s,i);if(i>=s.size())break;")
+            self.depth = self.depth + 1
+            self.w("std::string key=_json_parse_str(s,i);_json_skip_ws(s,i);")
+            self.w("if(i<s.size()&&s[i]==':')i++;_json_skip_ws(s,i);")
+            self.w("obj[key]=_json_parse_val(s,i);_json_skip_ws(s,i);")
+            self.w("if(i<s.size()&&s[i]==','){i++;continue;}if(i<s.size()&&s[i]=='}'){i++;break;}break;")
+            self.depth = self.depth - 1
+            self.w("};return JsonValue(obj);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("if(s[i]=='['){")
+            self.depth = self.depth + 1
+            self.w("i++;std::vector<JsonValue> arr;_json_skip_ws(s,i);")
+            self.w("if(i<s.size()&&s[i]==']'){i++;return JsonValue(arr);}")
+            self.w("while(1){_json_skip_ws(s,i);arr.push_back(_json_parse_val(s,i));_json_skip_ws(s,i);")
+            self.w("if(i<s.size()&&s[i]==','){i++;continue;}if(i<s.size()&&s[i]==']'){i++;break;}break;}")
+            self.w("return JsonValue(arr);")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("if(s.substr(i,4)==\"null\"){i+=4;return JsonValue(nullptr);}")
+            self.w("if(s.substr(i,4)==\"true\"){i+=4;return JsonValue(true);}")
+            self.w("if(s.substr(i,5)==\"false\"){i+=5;return JsonValue(false);}")
+            self.w("size_t start=i;if(s[i]=='-')i++;")
+            self.w("while(i<s.size()&&s[i]>='0'&&s[i]<='9')i++;")
+            self.w("bool is_f=false;if(i<s.size()&&s[i]=='.'){is_f=true;i++;while(i<s.size()&&s[i]>='0'&&s[i]<='9')i++;}")
+            self.w("if(i<s.size()&&(s[i]=='e'||s[i]=='E')){is_f=true;i++;if(i<s.size()&&(s[i]=='+'||s[i]=='-'))i++;while(i<s.size()&&s[i]>='0'&&s[i]<='9')i++;}")
+            self.w("std::string num=s.substr(start,i-start);")
+            self.w("if(is_f)return JsonValue(std::stod(num));")
+            self.w("return JsonValue(static_cast<int64_t>(std::stoll(num)));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("// ── JSON free functions ───")
+            self.w("inline bool json_is_null(const JsonValue& v){return v.is_null();}")
+            self.w("inline bool json_is_bool(const JsonValue& v){return v.is_bool();}")
+            self.w("inline bool json_is_int(const JsonValue& v){return v.is_int();}")
+            self.w("inline bool json_is_float(const JsonValue& v){return v.is_float();}")
+            self.w("inline bool json_is_str(const JsonValue& v){return v.is_str();}")
+            self.w("inline bool json_is_list(const JsonValue& v){return v.is_list();}")
+            self.w("inline bool json_is_dict(const JsonValue& v){return v.is_dict();}")
+            self.w("inline std::string json_as_str(const JsonValue& v){return v.as_str();}")
+            self.w("inline int64_t json_as_int(const JsonValue& v){return v.as_int();}")
+            self.w("inline double json_as_float(const JsonValue& v){return v.as_float();}")
+            self.w("inline bool json_as_bool(const JsonValue& v){return v.as_bool();}")
+            self.w("inline std::vector<JsonValue> json_as_list(const JsonValue& v){return v.as_list();}")
+            self.w("inline std::unordered_map<std::string,JsonValue> json_as_dict(const JsonValue& v){return v.as_dict();}")
+            self.w("inline std::optional<JsonValue> json_get(const JsonValue& v,const std::string& key){")
+            self.depth = self.depth + 1
+            self.w("if(!v.is_dict())return std::nullopt;auto m=v.as_dict();auto it=m.find(key);")
+            self.w("if(it==m.end())return std::nullopt;return it->second;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::optional<JsonValue> json_get_idx(const JsonValue& v,int64_t i){")
+            self.depth = self.depth + 1
+            self.w("if(!v.is_list())return std::nullopt;auto arr=v.as_list();")
+            self.w("if(i<0||i>=(int64_t)arr.size())return std::nullopt;return arr[(size_t)i];")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::string> json_keys(const JsonValue& v){return v.keys();}")
+            self.w("inline int64_t json_size(const JsonValue& v){return(int64_t)v.size();}")
+            self.w("inline bool json_contains(const JsonValue& v,const std::string& key){return v.contains(key);}")
+            self.w("inline void json_push(JsonValue& v,const JsonValue& val){v.push(val);}")
+            self.w("inline void json_set(JsonValue& v,const std::string& key,const JsonValue& val){v.set(key,val);}")
+            self.w("inline JsonValue json_null(){return JsonValue(nullptr);}")
+            self.w("inline JsonValue json_array(){return JsonValue(std::vector<JsonValue>());}")
+            self.w("inline JsonValue json_object(){return JsonValue(std::unordered_map<std::string,JsonValue>());}")
+            self.w("inline JsonValue json_int(int64_t i){return JsonValue(i);}")
+            self.w("inline JsonValue json_float(double f){return JsonValue(f);}")
+            self.w("inline JsonValue json_str(const std::string& s){return JsonValue(s);}")
+            self.w("inline JsonValue json_bool(bool b){return JsonValue(b);}")
+            self.w("inline JsonValue json_parse(const std::string& s){return _json_parse(s);}")
+            self.w("inline std::string json_serialize(const JsonValue& v){return _json_ser(v);}")
+            self.w("inline std::string json_pretty(const JsonValue& v,const std::string& indent){return _json_pret(v,indent,0);}")
+            self.w("inline std::string str(const JsonValue& v){return _json_ser(v);}")
+            self.w("inline void print(const JsonValue& v){std::cout<<_json_ser(v)<<std::endl;}")
             self.w("")
             self.w("// ── Result type ───")
             self.w("template<typename T, typename E>")
@@ -2415,6 +2752,7 @@ class CodeGen {
             self.w("return r+\"]\";")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline std::string str(const JsonValue& v);")
             self.w("")
             self.w("// ── print ───")
             self.w("template<typename T> void print(const T& v) { std::cout << v << \"\\n\"; }")
@@ -2435,6 +2773,7 @@ class CodeGen {
             self.w("if(r.is_ok) std::cout<<\"Ok(\"<<r.value<<\")\\n\"; else std::cout<<\"Err(\"<<r.error<<\")\\n\";")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline void print(const JsonValue& v);")
             self.w("")
             self.w("// ── collections ───")
             self.w("template<typename T> size_t len(const std::vector<T>& v){return v.size();}")
@@ -2555,6 +2894,22 @@ class CodeGen {
             self.w("return r;")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("template<typename T> std::vector<std::vector<T>> _ox_batched(const std::vector<T>& v,int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<T>> r; int sz=(int)v.size();")
+            self.w("if(n<=0)return r;")
+            self.w("for(int i=0;i<sz;i+=n){std::vector<T> chunk; int end=(i+n>sz)?sz:(i+n); for(int j=i;j<end;j++)chunk.push_back(v[j]); r.push_back(chunk);}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::vector<std::string>> _ox_batched(const std::string& s,int n){")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::vector<std::string>> r; int sz=(int)s.size();")
+            self.w("if(n<=0)return r;")
+            self.w("for(int i=0;i<sz;i+=n){std::vector<std::string> chunk; int end=(i+n>sz)?sz:(i+n); for(int j=i;j<end;j++)chunk.push_back(std::string(1,s[j])); r.push_back(chunk);}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
             self.w("template<typename T> std::vector<std::vector<T>> _ox_windowed(const std::vector<T>& v,int n){")
             self.depth = self.depth + 1
             self.w("std::vector<std::vector<T>> r; int sz=(int)v.size();")
@@ -2641,8 +2996,14 @@ class CodeGen {
             self.w("using std::sin; using std::cos; using std::tan;")
             self.w("using std::floor;using std::ceil;using std::round;")
             self.w("using std::log; using std::exp;")
+            self.w("using std::asin; using std::acos; using std::atan; using std::atan2;")
+            self.w("using std::sinh; using std::cosh; using std::tanh;")
+            self.w("constexpr double PI = 3.14159265358979323846;")
+            self.w("constexpr double E  = 2.71828182845904523536;")
             self.w("inline int max(int a,int b){return a>b?a:b;}")
             self.w("inline int min(int a,int b){return a<b?a:b;}")
+            self.w("inline double maxf(double a,double b){return a>b?a:b;}")
+            self.w("inline double minf(double a,double b){return a<b?a:b;}")
             self.w("")
             self.w("// ── string helpers ───")
             self.w("inline std::string str_get(const std::string& s, int i) {")
@@ -2788,6 +3149,31 @@ class CodeGen {
             self.w("return static_cast<int>(pos);")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline int str_count(const std::string& s, const std::string& sub) {")
+            self.depth = self.depth + 1
+            self.w("if (sub.empty()) return 0;")
+            self.w("int count = 0;")
+            self.w("size_t pos = 0;")
+            self.w("while ((pos = s.find(sub, pos)) != std::string::npos) {")
+            self.depth = self.depth + 1
+            self.w("count++;")
+            self.w("pos += sub.length();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return count;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::string> _ox_list_from_str(const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("for (char c : s) {")
+            self.depth = self.depth + 1
+            self.w("r.push_back(std::string(1, c));")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
             self.w("")
             self.w("// ── system ───")
             self.w("static int _ox_argc; static char** _ox_argv;")
@@ -2823,17 +3209,58 @@ class CodeGen {
             self.w("std::cerr << msg << std::endl; std::abort();")
             self.depth = self.depth - 1
             self.w("}")
-            self.w("inline void ox_assert(bool cond) {")
+            self.w("inline void _ox_assert(bool cond) {")
             self.depth = self.depth + 1
             self.w("if (!cond) { std::cerr << \"Assertion failed\" << std::endl; std::abort(); }")
             self.depth = self.depth - 1
             self.w("}")
+            self.w("inline void _ox_assert_msg(bool cond, const std::string& msg) {")
+            self.depth = self.depth + 1
+            self.w("if (!cond) { std::cerr << \"Assertion failed: \" << msg << std::endl; std::abort(); }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("// ── try/catch exception ──")
+            self.w("struct _ox_try_exception { std::string msg; };")
+            self.w("template<typename T, typename E>")
+            self.w("T _ox_try_throw(const Result<T, E>& r) {")
+            self.depth = self.depth + 1
+            self.w("if (!r.is_ok) throw _ox_try_exception{r.error};")
+            self.w("return r.value;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("T _ox_try_throw(const std::optional<T>& o) {")
+            self.depth = self.depth + 1
+            self.w("if (!o) throw _ox_try_exception{\"unwrapped None\"};")
+            self.w("return *o;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("// ── defer RAII helper ──")
+            self.w("struct _ox_defer_impl {")
+            self.depth = self.depth + 1
+            self.w("std::function<void()> fn;")
+            self.w("_ox_defer_impl(std::function<void()> f) : fn(f) {}")
+            self.w("~_ox_defer_impl() { fn(); }")
+            self.depth = self.depth - 1
+            self.w("};")
             self.w("inline std::string read_line() {")
             self.depth = self.depth + 1
             self.w("std::string line; std::getline(std::cin, line); return line;")
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline void eprint(const std::string& msg) { std::cerr << msg; }")
+            self.w("inline void eprintln(const std::string& msg) { std::cerr << msg << std::endl; }")
+            self.w("inline void append_file(const std::string& path, const std::string& contents) {")
+            self.depth = self.depth + 1
+            self.w("std::ofstream f(path, std::ios::app); f << contents;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string temp_dir() { return std::filesystem::temp_directory_path().string(); }")
+            self.w("inline std::string temp_file() {")
+            self.depth = self.depth + 1
+            self.w("return (std::filesystem::temp_directory_path() / std::tmpnam(nullptr)).string();")
+            self.depth = self.depth - 1
+            self.w("}")
             self.w("// ── str_format ──")
             self.w("inline std::string str_format(const std::string& fmt, const std::vector<std::string>& args) {")
             self.depth = self.depth + 1
@@ -2933,6 +3360,7 @@ class CodeGen {
             self.depth = self.depth - 1
             self.w("}")
             self.w("inline void _ox_randseed(unsigned int seed) { _ox_rng.seed(seed); }")
+            self.w("inline bool _ox_randbool() { return _ox_randint(0, 1) == 1; }")
             self.w("")
             self.w("// ── filesystem ───")
             self.w("inline bool fs_exists(const std::string& path) { return std::filesystem::exists(path); }")
@@ -2956,9 +3384,106 @@ class CodeGen {
             self.w("}")
             self.w("inline std::string fs_cwd() { return std::filesystem::current_path().string(); }")
             self.w("")
+            self.w("// ── datetime ───")
+            self.w("inline std::string _ox_datetime_now() {")
+            self.depth = self.depth + 1
+            self.w("auto now = std::chrono::system_clock::now();")
+            self.w("auto tt = std::chrono::system_clock::to_time_t(now);")
+            self.w("std::ostringstream ss;")
+            self.w("ss << std::put_time(std::gmtime(&tt), \"%Y-%m-%dT%H:%M:%S\");")
+            self.w("return ss.str();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _ox_datetime_format(const std::string& dt, const std::string& fmt) {")
+            self.depth = self.depth + 1
+            self.w("std::tm tm = {}; std::istringstream in(dt);")
+            self.w("in >> std::get_time(&tm, \"%Y-%m-%dT%H:%M:%S\");")
+            self.w("if (in.fail()) return dt;")
+            self.w("std::ostringstream out; out << std::put_time(&tm, fmt.c_str());")
+            self.w("return out.str();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _ox_datetime_parse(const std::string& s, const std::string& fmt) {")
+            self.depth = self.depth + 1
+            self.w("std::tm tm = {}; std::istringstream in(s);")
+            self.w("in >> std::get_time(&tm, fmt.c_str());")
+            self.w("if (in.fail()) return std::string();")
+            self.w("std::ostringstream out; out << std::put_time(&tm, \"%Y-%m-%dT%H:%M:%S\");")
+            self.w("return out.str();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline int _ox_datetime_component(const std::string& dt, int which) {")
+            self.depth = self.depth + 1
+            self.w("std::tm tm = {}; std::istringstream in(dt);")
+            self.w("in >> std::get_time(&tm, \"%Y-%m-%dT%H:%M:%S\");")
+            self.w("if (in.fail()) return 0;")
+            self.w("switch (which) {")
+            self.w("case 0: return tm.tm_year + 1900;")
+            self.w("case 1: return tm.tm_mon + 1;")
+            self.w("case 2: return tm.tm_mday;")
+            self.w("case 3: return tm.tm_hour;")
+            self.w("case 4: return tm.tm_min;")
+            self.w("case 5: return tm.tm_sec;")
+            self.w("default: return 0;")
+            self.w("}")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
+            self.w("// ── regex ───")
+            self.w("inline bool _ox_regex_match(const std::string& pattern, const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("try { return std::regex_match(s, std::regex(pattern)); } catch (...) { return false; }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline bool _ox_regex_search(const std::string& pattern, const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("try { return std::regex_search(s, std::regex(pattern)); } catch (...) { return false; }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _ox_regex_find(const std::string& pattern, const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("try { std::smatch m; if (std::regex_search(s, m, std::regex(pattern))) return m.str(); } catch (...) {}")
+            self.w("return std::string();")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::string> _ox_regex_find_all(const std::string& pattern, const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("try {")
+            self.w("std::regex re(pattern);")
+            self.w("auto begin = std::sregex_iterator(s.begin(), s.end(), re);")
+            self.w("auto end = std::sregex_iterator();")
+            self.w("for (auto it = begin; it != end; ++it) r.push_back(it->str());")
+            self.w("} catch (...) {}")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::string _ox_regex_replace(const std::string& pattern, const std::string& s, const std::string& replacement) {")
+            self.depth = self.depth + 1
+            self.w("try { return std::regex_replace(s, std::regex(pattern), replacement); } catch (...) { return s; }")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("inline std::vector<std::string> _ox_regex_split(const std::string& pattern, const std::string& s) {")
+            self.depth = self.depth + 1
+            self.w("std::vector<std::string> r;")
+            self.w("try {")
+            self.w("std::regex re(pattern);")
+            self.w("auto begin = std::sregex_token_iterator(s.begin(), s.end(), re, -1);")
+            self.w("auto end = std::sregex_token_iterator();")
+            self.w("for (auto it = begin; it != end; ++it) r.push_back(it->str());")
+            self.w("} catch (...) { r.push_back(s); }")
+            self.w("return r;")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("")
             self.w("// ── math helpers ───")
             self.w("template<typename T>")
             self.w("nc::NdArray<T> _ox_math_to_ndarray(const std::vector<T>& v) {")
+            self.w("return nc::NdArray<T>(v.begin(), v.end());")
+            self.depth = self.depth - 1
+            self.w("}")
+            self.w("template<typename T>")
+            self.w("nc::NdArray<T> _ox_to_ndarray(const std::vector<T>& v) {")
             self.depth = self.depth + 1
             self.w("return nc::NdArray<T>(v.begin(), v.end());")
             self.depth = self.depth - 1
@@ -3276,6 +3801,7 @@ class TypeChecker {
     in_class: str
     generic_params: List<str>
     type_bindings: List<Binding>
+    module_names: List<str>
 
     fn _bi(self, name: str, param_types: List<str>, ret: str) -> void {
         push(self.fn_names, name)
@@ -3307,6 +3833,15 @@ class TypeChecker {
         self._bi( "exp",     ["float"], "float")
         self._bi( "min",     ["int", "int"], "int")
         self._bi( "max",     ["int", "int"], "int")
+        self._bi( "PI",      [], "float")
+        self._bi( "E",       [], "float")
+        self._bi( "asin",    ["float"], "float")
+        self._bi( "acos",    ["float"], "float")
+        self._bi( "atan",    ["float"], "float")
+        self._bi( "atan2",   ["float", "float"], "float")
+        self._bi( "sinh",    ["float"], "float")
+        self._bi( "cosh",    ["float"], "float")
+        self._bi( "tanh",    ["float"], "float")
         self._bi( "contains",["void", "void"], "bool")
         self._bi( "read_file",   ["str"], "str")
         self._bi( "read_lines",  ["str"], "List<str>")
@@ -3337,6 +3872,8 @@ class TypeChecker {
         self._bi( "str_repeat",  ["str", "int"], "str")
         self._bi( "str_reverse", ["str"], "str")
         self._bi( "str_find",    ["str", "str"], "Option<int>")
+        self._bi( "str_count",   ["str", "str"], "int")
+        self._bi( "_ox_list_from_str", ["str"], "List<str>")
         self._bi( "map_contains", ["void", "void"], "bool")
         self._bi( "map_get",  ["void", "void"], "void")
         self._bi( "map_set",  ["void", "void", "void"], "void")
@@ -3361,13 +3898,91 @@ class TypeChecker {
         self._bi( "fs_copy",    ["str", "str"], "void")
         self._bi( "fs_cwd",     [], "str")
         self._bi( "panic",      ["str"], "void")
-        self._bi( "ox_assert",  ["bool"], "void")
+        self._bi( "assert",     ["bool"], "void")
         self._bi( "read_line",  [], "str")
         self._bi( "eprint",     ["str"], "void")
+        self._bi( "eprintln",   ["str"], "void")
+        self._bi( "append_file", ["str", "str"], "void")
+        self._bi( "temp_dir",   [], "str")
+        self._bi( "temp_file",  [], "str")
         self._bi( "str_format", ["str", "List<str>"], "str")
+        // ── JSON builtins ──
+        self._bi( "json_parse",     ["str"], "JsonValue")
+        self._bi( "json_serialize", ["JsonValue"], "str")
+        self._bi( "json_pretty",    ["JsonValue", "str"], "str")
+        self._bi( "json_is_null",   ["JsonValue"], "bool")
+        self._bi( "json_is_bool",   ["JsonValue"], "bool")
+        self._bi( "json_is_int",    ["JsonValue"], "bool")
+        self._bi( "json_is_float",  ["JsonValue"], "bool")
+        self._bi( "json_is_str",    ["JsonValue"], "bool")
+        self._bi( "json_is_list",   ["JsonValue"], "bool")
+        self._bi( "json_is_dict",   ["JsonValue"], "bool")
+        self._bi( "json_as_str",    ["JsonValue"], "str")
+        self._bi( "json_as_int",    ["JsonValue"], "int")
+        self._bi( "json_as_float",  ["JsonValue"], "float")
+        self._bi( "json_as_bool",   ["JsonValue"], "bool")
+        self._bi( "json_as_list",   ["JsonValue"], "List<JsonValue>")
+        self._bi( "json_as_dict",   ["JsonValue"], "Map<str, JsonValue>")
+        self._bi( "json_get",       ["JsonValue", "str"], "Option<JsonValue>")
+        self._bi( "json_get_idx",   ["JsonValue", "int"], "Option<JsonValue>")
+        self._bi( "json_keys",      ["JsonValue"], "List<str>")
+        self._bi( "json_size",      ["JsonValue"], "int")
+        self._bi( "json_contains",  ["JsonValue", "str"], "bool")
+        self._bi( "json_push",      ["JsonValue", "JsonValue"], "void")
+        self._bi( "json_set",       ["JsonValue", "str", "JsonValue"], "void")
+        self._bi( "json_null",      [], "JsonValue")
+        self._bi( "json_array",     [], "JsonValue")
+        self._bi( "json_object",    [], "JsonValue")
+        self._bi( "json_int",       ["int"], "JsonValue")
+        self._bi( "json_float",     ["float"], "JsonValue")
+        self._bi( "json_str",       ["str"], "JsonValue")
+        self._bi( "json_bool",      ["bool"], "JsonValue")
+        // ── datetime builtins ──
+        self._bi( "_ox_datetime_now",        [], "str")
+        self._bi( "_ox_datetime_format",     ["str", "str"], "str")
+        self._bi( "_ox_datetime_parse",      ["str", "str"], "str")
+        self._bi( "_ox_datetime_component",  ["str", "int"], "int")
+        // ── regex builtins ──
+        self._bi( "_ox_regex_match",         ["str", "str"], "bool")
+        self._bi( "_ox_regex_search",        ["str", "str"], "bool")
+        self._bi( "_ox_regex_find",          ["str", "str"], "Option<str>")
+        self._bi( "_ox_regex_find_all",      ["str", "str"], "List<str>")
+        self._bi( "_ox_regex_replace",       ["str", "str", "str"], "str")
+        self._bi( "_ox_regex_split",         ["str", "str"], "List<str>")
         self._bi( "_ox_randint",  ["int", "int"], "int")
         self._bi( "_ox_randfloat", [], "float")
         self._bi( "_ox_randseed",  ["int"], "void")
+        self._bi( "_ox_randbool",  [], "bool")
+        self._bi( "_ox_math_zeros",    ["int"], "List<float>")
+        self._bi( "_ox_math_ones",     ["int"], "List<float>")
+        self._bi( "_ox_math_linspace", ["float", "float", "int"], "List<float>")
+        self._bi( "_ox_math_arange",   ["float", "float", "float"], "List<float>")
+        self._bi( "_ox_math_dot",      ["List<float>", "List<float>"], "float")
+        self._bi( "_ox_math_matmul",   ["List<List<float>>", "List<List<float>>"], "List<List<float>>")
+        self._bi( "_ox_math_transpose",["List<List<float>>"], "List<List<float>>")
+        self._bi( "_ox_math_norm",     ["List<float>"], "float")
+        self._bi( "_ox_math_inv",      ["List<List<float>>"], "List<List<float>>")
+        self._bi( "_ox_math_det",      ["List<List<float>>"], "float")
+        self._bi( "_ox_math_solve",    ["List<List<float>>", "List<float>"], "List<float>")
+        self._bi( "_ox_math_sin",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_cos",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_tan",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_sqrt",     ["List<float>"], "List<float>")
+        self._bi( "_ox_math_abs",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_exp",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_log",      ["List<float>"], "List<float>")
+        self._bi( "_ox_math_floor",    ["List<float>"], "List<float>")
+        self._bi( "_ox_math_ceil",     ["List<float>"], "List<float>")
+        self._bi( "_ox_math_add",      ["List<float>", "List<float>"], "List<float>")
+        self._bi( "_ox_math_sub",      ["List<float>", "List<float>"], "List<float>")
+        self._bi( "_ox_math_mul",      ["List<float>", "List<float>"], "List<float>")
+        self._bi( "_ox_math_div",      ["List<float>", "List<float>"], "List<float>")
+        self._bi( "_ox_math_sum",      ["List<float>"], "float")
+        self._bi( "_ox_math_mean",     ["List<float>"], "float")
+        self._bi( "_ox_math_min",      ["List<float>"], "float")
+        self._bi( "_ox_math_max",      ["List<float>"], "float")
+        self._bi( "_ox_math_reshape",  ["List<float>", "int", "int"], "List<float>")
+        self._bi( "batched",  ["void", "int"], "List<List<void>>")
     }
 
     fn push_scope(self) -> void {
@@ -3599,6 +4214,7 @@ class TypeChecker {
         }
         if node.kind == "Ident" {
             if node.name == "true" or node.name == "false" { return "bool" }
+            if node.name == "PI" or node.name == "E" { return "float" }
             if node.name == "self" {
                 if self.in_class != "" { return self.in_class }
                 self.err("`self` is only valid inside class methods", node_id, "E0401")
@@ -3608,6 +4224,11 @@ class TypeChecker {
             if ty != "" { return ty }
             if self.find_fn(node.name) >= 0 { return "fn" }
             if self.find_cls(node.name) >= 0 { return "type" }
+            var mi = 0
+            while mi < len(self.module_names) {
+                if self.module_names[mi] == node.name { return "module" }
+                mi = mi + 1
+            }
             self.err("cannot find value `" + node.name + "` in this scope", node_id, "E0425")
             return "void"
         }
@@ -3660,6 +4281,33 @@ class TypeChecker {
                 }
                 return "Result<void, void>"
             }
+            if fn_expr.kind == "Ident" and fn_expr.name == "list" {
+                var ai = 0
+                while ai < len(node.args) { self.infer_type(node.args[ai]); ai = ai + 1 }
+                return "List<str>"
+            }
+            if fn_expr.kind == "Ident" and fn_expr.name == "sorted" {
+                if len(node.args) > 0 {
+                    let arg_t = self.infer_type(node.args[0])
+                    if starts_with(arg_t, "List") { return arg_t }
+                    if starts_with(arg_t, "(") { return "List<void>" }
+                    return "List<str>"
+                }
+                return "List<void>"
+            }
+            if fn_expr.kind == "Ident" and fn_expr.name == "enumerate" {
+                if len(node.args) > 0 {
+                    let arg_t = self.infer_type(node.args[0])
+                    if starts_with(arg_t, "List") {
+                        let params = type_params(arg_t)
+                        if len(params) > 0 { return "List<(int, " + params[0] + ")>" }
+                    }
+                }
+                return "List<(int, void)>"
+            }
+            if fn_expr.kind == "Ident" and fn_expr.name == "batched" {
+                return "List<List<void>>"
+            }
             if fn_expr.kind == "Ident" {
                 let fn_name = fn_expr.name
                 // Phase 1: Infer arg types independently (before generic context)
@@ -3687,8 +4335,23 @@ class TypeChecker {
                         }
                         self.generic_params = gp
                     }
-                    // Phase 4: Check arg compatibility (print is variadic)
+                    // Phase 4: Check arg compatibility (print is variadic, assert takes 1-2 args)
                     if fn_name == "print" {
+                        self.generic_params = old_generic
+                        return "void"
+                    }
+                    if fn_name == "assert" {
+                        if len(node.args) < 1 or len(node.args) > 2 {
+                            self.err("function `assert` takes 1-2 arguments but " +
+                                str(len(node.args)) + " were given", node_id, "E0060")
+                        } else {
+                            if not self.is_compatible("bool", arg_types[0]) {
+                                self.type_err("bool", arg_types[0], node.args[0])
+                            }
+                            if len(node.args) == 2 and not self.is_compatible("str", arg_types[1]) {
+                                self.type_err("str", arg_types[1], node.args[1])
+                            }
+                        }
                         self.generic_params = old_generic
                         return "void"
                     }
@@ -3733,9 +4396,40 @@ class TypeChecker {
             return "void"
         }
         if node.kind == "MethodCall" {
+            let obj_node = node_pool[node.obj]
             let obj_t = self.infer_type(node.obj)
             var ai = 0
             while ai < len(node.args) { self.infer_type(node.args[ai]); ai = ai + 1 }
+            // Module function call: json.parse_str(...) -> _oxm_json_parse_str
+            if obj_t == "module" and obj_node.kind == "Ident" {
+                let mod_name = obj_node.name
+                let fn_name = "_oxm_" + mod_name + "_" + node.name
+                let fi = self.find_fn(fn_name)
+                if fi >= 0 {
+                    let pts = self.fn_param_types[fi]
+                    let expected = len(pts)
+                    if len(node.args) != expected {
+                        var plural: str = "s"
+                        if expected == 1 { plural = "" }
+                        self.err("function `" + node.name + "` in module `" + mod_name + "` takes " +
+                            str(expected) + " argument" + plural +
+                            " but " + str(len(node.args)) + " were given",
+                            node_id, "E0060")
+                        return self.fn_rets[fi]
+                    }
+                    ai = 0
+                    while ai < len(node.args) {
+                        let arg_t = self.infer_type(node.args[ai])
+                        if pts[ai] != "void" and not self.is_compatible(arg_t, pts[ai]) {
+                            self.type_err(pts[ai], arg_t, node.args[ai])
+                        }
+                        ai = ai + 1
+                    }
+                    return self.fn_rets[fi]
+                }
+                self.err("no function named `" + node.name + "` in module `" + mod_name + "`", node_id, "E0599")
+                return "void"
+            }
             let base = base_type(obj_t)
             // Try class methods
             let ci = self.find_cls(base)
@@ -3990,6 +4684,18 @@ class TypeChecker {
             // Modules already resolved by compile_source; nothing to check
         } elif node.kind == "ExprStmt" {
             self.infer_type(node.inner)
+        } elif node.kind == "DeferStmt" {
+            self.infer_type(node.inner)
+        } elif node.kind == "TryCatchStmt" {
+            self.push_scope()
+            var ti = 0
+            while ti < len(node.then_body) { self.check_stmt(node.then_body[ti]); ti = ti + 1 }
+            self.pop_scope()
+            self.push_scope()
+            self.declare_var(node.name, "str")
+            var ci = 0
+            while ci < len(node.else_body) { self.check_stmt(node.else_body[ci]); ci = ci + 1 }
+            self.pop_scope()
         } elif node.kind == "BreakStmt" or node.kind == "ContinueStmt" {
             // No validation yet
         }
@@ -4020,7 +4726,8 @@ fn check_source(src: str, source_path: str) -> void {
         diags: [], scopes: [],
         fn_names: [], fn_param_types: [], fn_rets: [],
         cls_names: [], cls_field_names: [], cls_field_types: [],
-        in_fn_ret: "", in_class: "", generic_params: []
+        in_fn_ret: "", in_class: "", generic_params: [],
+        module_names: []
     }
     tc.check(ast)
 
@@ -4046,6 +4753,15 @@ fn compile_source(src: str, source_path: str) -> int {
     // ── Module resolution ──
     var module_cpps: List<str> = []
     var module_names: List<str> = []
+
+    // Module symbol collection for TypeChecker
+    var tc_fn_names: List<str> = []
+    var tc_fn_param_types: List<List<str>> = []
+    var tc_fn_rets: List<str> = []
+    var tc_fn_nodes: List<int> = []
+    var tc_cls_names: List<str> = []
+    var tc_cls_field_names: List<List<str>> = []
+    var tc_cls_field_types: List<List<str>> = []
 
     // Extract source directory from path
     var src_dir: str = ""
@@ -4125,15 +4841,93 @@ fn compile_source(src: str, source_path: str) -> int {
             }
             push(module_names, mod_name)
 
+            // ── Type-check module ──
+            var mod_path: str = ""
+            if src_dir != "" { mod_path = src_dir + "/" + mod_file }
+            else { mod_path = mod_file }
+            let mod_tc = TypeChecker {
+                src: mod_src, source_path: mod_path,
+                diags: [], scopes: [],
+                fn_names: [], fn_param_types: [], fn_rets: [], fn_nodes: [],
+                cls_names: [], cls_field_names: [], cls_field_types: [],
+                in_fn_ret: "", in_class: "", generic_params: [],
+                type_bindings: [], module_names: []
+            }
+            mod_tc.check(mod_ast)
+            if len(mod_tc.diags) > 0 {
+                var di = 0
+                while di < len(mod_tc.diags) {
+                    print(render_one(mod_tc.diags[di], mod_src, mod_path))
+                    di = di + 1
+                }
+                let err_node = alloc_node()
+                node_pool[err_node].kind = "Result"
+                node_pool[err_node].str_val = ""
+                return err_node
+            }
+
+            // Collect module functions (skip builtins and main)
+            var fi = 0
+            while fi < len(mod_tc.fn_names) {
+                let fn_node_id = mod_tc.fn_nodes[fi]
+                let fn_name = mod_tc.fn_names[fi]
+                if fn_node_id >= 0 and fn_name != "main" {
+                    let pname = "_oxm_" + mod_name + "_" + fn_name
+                    push(tc_fn_names, pname)
+                    push(tc_fn_param_types, mod_tc.fn_param_types[fi])
+                    push(tc_fn_rets, mod_tc.fn_rets[fi])
+                    push(tc_fn_nodes, -1)
+                }
+                fi = fi + 1
+            }
+
+            // Collect module classes
+            var ci = 0
+            while ci < len(mod_tc.cls_names) {
+                let cls_name = mod_tc.cls_names[ci]
+                push(tc_cls_names, "_oxm_" + mod_name + "_" + cls_name)
+                push(tc_cls_field_names, mod_tc.cls_field_names[ci])
+                push(tc_cls_field_types, mod_tc.cls_field_types[ci])
+                ci = ci + 1
+            }
+
             // Generate module C++ (inside namespace, no runtime header)
-            let mod_cgen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: [] }
+            let mod_cgen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: [], in_try: 0 }
             push(module_cpps, mod_cgen.generate_module(mod_ast, ns_name))
         }
         si = si + 1
     }
 
+    // ── Type-check (with module symbols) ──
+    let tc = TypeChecker {
+        src: src, source_path: source_path,
+        diags: [], scopes: [],
+        fn_names: tc_fn_names,
+        fn_param_types: tc_fn_param_types,
+        fn_rets: tc_fn_rets,
+        fn_nodes: tc_fn_nodes,
+        cls_names: tc_cls_names,
+        cls_field_names: tc_cls_field_names,
+        cls_field_types: tc_cls_field_types,
+        in_fn_ret: "", in_class: "", generic_params: [],
+        type_bindings: [],
+        module_names: module_names
+    }
+    tc.check(ast)
+    if len(tc.diags) > 0 {
+        var di = 0
+        while di < len(tc.diags) {
+            print(render_one(tc.diags[di], src, source_path))
+            di = di + 1
+        }
+        let err_node = alloc_node()
+        node_pool[err_node].kind = "Result"
+        node_pool[err_node].str_val = ""
+        return err_node
+    }
+
     // ── Generate main C++ (with module names so codegen resolves mod.fn() calls) ──
-    let codegen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: module_names }
+    let codegen = CodeGen { out: [], depth: 0, in_class: "", tmp_counter: 0, modules: module_names, in_try: 0 }
     let main_cpp = codegen.generate(ast)
 
     // ── Assemble final C++ ──

@@ -384,6 +384,19 @@ TESTS = [
         'b',                    # sorted str second
         'c',                    # sorted str third
     ]),
+    ('test_error_handling.ox', [
+        'assert_ok',
+        'before_defer',
+        'after_defer',
+        'div_ok_5',
+        'caught_division by zero',
+        'opt_ok_42',
+        'caught_opt_unwrapped None',
+        'done',
+        'deferred',
+    ]),
+    ('test_datetime.ox', "IGNORE"),
+    ('test_regex.ox', "IGNORE"),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────

@@ -45,10 +45,10 @@
 
 ### Standard library — I/O
 - [x] `input()` / `read_line()` → `str`
-- [ ] `eprint(msg)` / `eprintln(msg)` → stderr output
-- [ ] `append_file(path, content)` → file append mode
+- [x] `eprint(msg)` / `eprintln(msg)` → stderr output
+- [x] `append_file(path, content)` → file append mode
 - [x] `read_file_lines(path)` → `List<str>` (already exists as `read_lines`)
-- [ ] `temp_dir()` / `temp_file()` → path utilities
+- [x] `temp_dir()` / `temp_file()` → path utilities
 
 ### Standard library — DateTime
 - [ ] `now()` → timestamp / DateTime struct
@@ -65,10 +65,10 @@
 - [ ] **CONTRIBUTING.md**
 
 ### Error handling
-- [ ] `panic(msg)` builtin — prints message and aborts
-- [ ] `assert(cond)` / `assert(cond, msg)` builtins
-- [ ] `try`/`catch` — graceful error recovery from `?` failures
-- [ ] `defer` — scope-exit cleanup
+- [x] `panic(msg)` builtin — prints message and aborts
+- [x] `assert(cond)` / `assert(cond, msg)` builtins
+- [x] `try`/`catch` — graceful error recovery from `?` failures
+- [x] `defer` — scope-exit cleanup
 
 ---
 
