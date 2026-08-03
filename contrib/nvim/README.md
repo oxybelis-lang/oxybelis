@@ -7,7 +7,6 @@
 ```lua
 {
   dir = "~/Projects/oxybelis/contrib/nvim",
-  -- or: "oxybelis-lang/oxybelis" if published as a plugin
   ft = "ox",
   opts = {},
 }

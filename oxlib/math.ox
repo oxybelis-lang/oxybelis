@@ -1,59 +1,125 @@
 // ────────────────────────────────────────────────────────────
-//  math.ox  –  NumCpp-powered math library
-//  Provides numpy-like functionality using NumCpp under the hood.
-//  Uses List<float> as the public 1D array type and
-//  List<List<float>> as the public 2D array type.
+//  math.ox  –  Python-style scalar math module
+//  Mirrors the Python `math` module API: constants plus
+//  per-element functions on scalars. Array operations live
+//  in oxlib/numpy.ox (numpy.*).
 // ────────────────────────────────────────────────────────────
 
-pub fn array(data: List<float>) -> List<float> { return data }
-pub fn zeros(n: int) -> List<float> { return _ox_math_zeros(n) }
-pub fn ones(n: int) -> List<float> { return _ox_math_ones(n) }
-pub fn linspace(start: float, end: float, n: int) -> List<float> { return _ox_math_linspace(start, end, n) }
-pub fn arange(start: float, end: float, step: float) -> List<float> { return _ox_math_arange(start, end, step) }
+pub let PI: float = 3.14159265358979323846
+pub let E: float = 2.71828182845904523536
+pub let TAU: float = 6.28318530717958647692
+pub let inf: float = _ox_math_inf()
+pub let nan: float = _ox_math_nan()
 
-pub fn dot(a: List<float>, b: List<float>) -> float { return _ox_math_dot(a, b) }
-pub fn matmul(a: List<List<float>>, b: List<List<float>>) -> List<List<float>> { return _ox_math_matmul(a, b) }
-pub fn transpose(a: List<List<float>>) -> List<List<float>> { return _ox_math_transpose(a) }
-pub fn norm(a: List<float>) -> float { return _ox_math_norm(a) }
-pub fn inv(a: List<List<float>>) -> List<List<float>> { return _ox_math_inv(a) }
-pub fn det(a: List<List<float>>) -> float { return _ox_math_det(a) }
-pub fn solve(A: List<List<float>>, b: List<float>) -> List<float> { return _ox_math_solve(A, b) }
+pub fn sqrt(x: float) -> float { return _ox_fsqrt(x) }
+pub fn pow(x: float, y: float) -> float { return _ox_fpow(x, y) }
+pub fn exp(x: float) -> float { return _ox_fexp(x) }
+pub fn expm1(x: float) -> float { return _ox_fexp(x) - 1.0 }
+pub fn log(x: float) -> float { return _ox_flog(x) }
+pub fn log1p(x: float) -> float { return _ox_flog(1.0 + x) }
+pub fn log2(x: float) -> float { return _ox_flog(x) / _ox_flog(2.0) }
+pub fn log10(x: float) -> float { return _ox_flog(x) / _ox_flog(10.0) }
 
-pub fn sin(a: List<float>) -> List<float> { return _ox_math_sin(a) }
-pub fn cos(a: List<float>) -> List<float> { return _ox_math_cos(a) }
-pub fn tan(a: List<float>) -> List<float> { return _ox_math_tan(a) }
-pub fn sqrt(a: List<float>) -> List<float> { return _ox_math_sqrt(a) }
-pub fn abs(a: List<float>) -> List<float> { return _ox_math_abs(a) }
-pub fn exp(a: List<float>) -> List<float> { return _ox_math_exp(a) }
-pub fn log(a: List<float>) -> List<float> { return _ox_math_log(a) }
-pub fn floor(a: List<float>) -> List<float> { return _ox_math_floor(a) }
-pub fn ceil(a: List<float>) -> List<float> { return _ox_math_ceil(a) }
+pub fn sin(x: float) -> float { return _ox_fsin(x) }
+pub fn cos(x: float) -> float { return _ox_fcos(x) }
+pub fn tan(x: float) -> float { return _ox_ftan(x) }
+pub fn asin(x: float) -> float { return _ox_fasin(x) }
+pub fn acos(x: float) -> float { return _ox_facos(x) }
+pub fn atan(x: float) -> float { return _ox_fatan(x) }
+pub fn atan2(y: float, x: float) -> float { return _ox_fatan2(y, x) }
 
-pub fn add(a: List<float>, b: List<float>) -> List<float> { return _ox_math_add(a, b) }
-pub fn sub(a: List<float>, b: List<float>) -> List<float> { return _ox_math_sub(a, b) }
-pub fn mul(a: List<float>, b: List<float>) -> List<float> { return _ox_math_mul(a, b) }
-pub fn div(a: List<float>, b: List<float>) -> List<float> { return _ox_math_div(a, b) }
+pub fn sinh(x: float) -> float { return _ox_fsinh(x) }
+pub fn cosh(x: float) -> float { return _ox_fcosh(x) }
+pub fn tanh(x: float) -> float { return _ox_ftanh(x) }
+pub fn asinh(x: float) -> float { return _ox_fasinh(x) }
+pub fn acosh(x: float) -> float { return _ox_facosh(x) }
+pub fn atanh(x: float) -> float { return _ox_fatanh(x) }
 
-pub fn sum(a: List<float>) -> float { return _ox_math_sum(a) }
-pub fn mean(a: List<float>) -> float { return _ox_math_mean(a) }
-pub fn min(a: List<float>) -> float { return _ox_math_min(a) }
-pub fn max(a: List<float>) -> float { return _ox_math_max(a) }
+pub fn hypot(x: float, y: float) -> float { return sqrt(x * x + y * y) }
+pub fn floor(x: float) -> float { return _ox_ffloor(x) }
+pub fn ceil(x: float) -> float { return _ox_fceil(x) }
+pub fn round(x: float) -> float { return _ox_fround(x) }
+pub fn trunc(x: float) -> float { return float(int(x)) }
+pub fn fabs(x: float) -> float { return _ox_fabs(x) }
+pub fn copysign(x: float, y: float) -> float {
+    if y >= 0.0 { return fabs(x) }
+    return -fabs(x)
+}
+pub fn fmod(x: float, y: float) -> float { return x - y * floor(x / y) }
+pub fn degrees(x: float) -> float { return x * 180.0 / PI }
+pub fn radians(x: float) -> float { return x * PI / 180.0 }
 
-pub fn reshape(a: List<float>, rows: int, cols: int) -> List<float> { return _ox_math_reshape(a, rows, cols) }
+pub fn erf(x: float) -> float { return _ox_ferf(x) }
+pub fn erfc(x: float) -> float { return _ox_ferfc(x) }
+pub fn gamma(x: float) -> float { return _ox_fgamma(x) }
+pub fn lgamma(x: float) -> float { return _ox_flgamma(x) }
 
-pub fn eye(n: int) -> List<List<float>> {
-    var result: List<List<float>> = []
-    var i = 0
-    while i < n {
-        var row: List<float> = []
-        var j = 0
-        while j < n {
-            if i == j { push(row, 1.0) }
-            else { push(row, 0.0) }
-            j = j + 1
-        }
-        push(result, row)
+pub fn isnan(x: float) -> bool { return _ox_math_isnan(x) }
+pub fn isinf(x: float) -> bool { return _ox_math_isinf(x) }
+pub fn isfinite(x: float) -> bool { return _ox_math_isfinite(x) }
+
+pub fn isclose(a: float, b: float, rel_tol: float, abs_tol: float) -> bool {
+    if fabs(a - b) <= abs_tol { return true }
+    return fabs(a - b) <= rel_tol * fabs(b)
+}
+
+pub fn gcd(a: int, b: int) -> int {
+    var x = abs(a)
+    var y = abs(b)
+    while y != 0 {
+        let t = x % y
+        x = y
+        y = t
+    }
+    return x
+}
+
+pub fn lcm(a: int, b: int) -> int {
+    if a == 0 or b == 0 { return 0 }
+    return abs(a / gcd(a, b) * b)
+}
+
+pub fn factorial(n: int) -> int {
+    var result = 1
+    var i = 2
+    while i <= n {
+        result = result * i
         i = i + 1
     }
     return result
+}
+
+pub fn comb(n: int, k: int) -> int {
+    var kk = k
+    if kk < 0 or kk > n { return 0 }
+    if kk > n - kk { kk = n - kk }
+    var result = 1
+    var i = 0
+    while i < kk {
+        result = result * (n - i) / (i + 1)
+        i = i + 1
+    }
+    return result
+}
+
+pub fn perm(n: int, k: int) -> int {
+    if k < 0 or k > n { return 0 }
+    var result = 1
+    var i = 0
+    while i < k {
+        result = result * (n - i)
+        i = i + 1
+    }
+    return result
+}
+
+pub fn dist(p: List<float>, q: List<float>) -> float {
+    var total = 0.0
+    var i = 0
+    while i < len(p) {
+        let d = p[i] - q[i]
+        total = total + d * d
+        i = i + 1
+    }
+    return sqrt(total)
 }

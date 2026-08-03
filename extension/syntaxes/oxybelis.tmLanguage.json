@@ -93,7 +93,7 @@
       "patterns": [
         {
           "name": "keyword.control.ox",
-          "match": "\\b(fn|if|elif|else|for|while|match|return|break|continue|let|var|pub)\\b"
+          "match": "\\b(fn|if|elif|else|for|while|match|return|break|continue|let|var|pub|import|yield|defer|try|catch|lazy|and|or|not|in|as)\\b"
         },
         {
           "name": "keyword.other.ox",
@@ -109,7 +109,7 @@
       "patterns": [
         {
           "name": "support.type.ox",
-          "match": "\\b(int|float|bool|str|void|List|Map|Option)\\b"
+          "match": "\\b(int|float|bool|str|void|long|List|Map|Option)\\b"
         },
         {
           "name": "support.type.generic.ox",

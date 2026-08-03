@@ -12,6 +12,9 @@
 				}
 			},
 			"models": {
+				"gemma4-12b-coder-fable5:latest": {
+					"name": "Gemma 4 Coder Fable 5 (32k)"
+				},
 				"gemma4:12b-32k": {
 					"name": "Gemma 4 12B (32k)",
 					"limit": {

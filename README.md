@@ -56,7 +56,20 @@ cd oxybelis
 python oxybelis.py hello.ox
 ```
 
-The Python version has a full type checker (`--check`). The bootstrapped compiler (`compiler.ox`) also has a full type checker and supports self-hosting — `compiler.exe compiler.ox -S` produces a correct `compiler2.exe` that passes its own `--check`.
+The Python version includes a full type checker (`--check`) and serves as the reference implementation. You can run it directly from the source.
+
+## Building the Self-Hosting Compiler
+
+The bootstrapped compiler (`compiler.ox`) is written in Oxybelis itself and can compile its own source code. To build it, first ensure you have the `oxybelis` CLI installed (see "Install" section above), then:
+
+```bash
+# Transpile compiler.ox to C++
+oxybelis compiler.ox -o compiler.cpp
+# Then compile the generated C++ (requires a C++20 compiler, e.g., g++ or clang++)
+g++ compiler.cpp -o compiler.exe -std=c++20 -O3
+```
+
+This `compiler.exe` can then be used to compile other Oxybelis programs, or even itself (self-hosting). It also includes a full type checker, accessible via `compiler.exe compiler.ox --check`.
 
 ## CLI
 
@@ -117,13 +130,26 @@ python oxybelis.py examples/math_demo.ox      # math/NumCpp demo
 | `tests/` | Test suite (`python tests/run_tests.py`) |
 | `install.ps1` / `install.sh` | Cross-platform installers |
 
-## Test
+## Testing
+
+To run the full test suite for the Oxybelis compiler:
 
 ```bash
-python tests/run_tests.py                  # run all test suites
-python oxybelis.py examples/basics.ox      # compile + run the basics demo
+python tests/run_tests.py
+```
+
+To run a specific example program and verify its output:
+
+```bash
+oxybelis examples/basics.ox # compile and run a basic example
+```
+
+For type-checking only (using the Python reference compiler):
+
+```bash
+python oxybelis.py examples/basics.ox --check
 ```
 
 ## License
 
-GNU General Public License v3.0
+[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)

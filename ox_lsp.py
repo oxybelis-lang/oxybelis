@@ -272,7 +272,7 @@ _OX_KEYWORDS = frozenset({
     'true', 'false', 'None', 'Some', 'import', 'and', 'or', 'not',
     'break', 'continue',
 })
-_OX_TYPES = frozenset({'int', 'float', 'bool', 'str', 'void', 'List', 'Map', 'Option'})
+_OX_TYPES = frozenset({'int', 'float', 'bool', 'str', 'void', 'long', 'List', 'Map', 'Option'})
 
 TOKEN_KEYWORD  = 0
 TOKEN_TYPE     = 1
@@ -336,13 +336,15 @@ def get_semantic_tokens(source: str) -> PyList[int]:
         tok_type = -1
         if tok.type in (TT.FN, TT.LET, TT.VAR, TT.CLASS, TT.IF, TT.ELSE, TT.ELIF,
                         TT.FOR, TT.IN, TT.WHILE, TT.RETURN, TT.MATCH, TT.LAZY,
-                        TT.PUB, TT.BREAK, TT.CONTINUE):
+                        TT.PUB, TT.BREAK, TT.CONTINUE, TT.IMPORT, TT.YIELD,
+                        TT.DEFER, TT.TRY, TT.CATCH, TT.AND, TT.OR, TT.NOT,
+                        TT.AS):
             tok_type = TOKEN_KEYWORD
             if tok.type == TT.FN:
                 was_fn_keyword = True
         elif word in ('true', 'false', 'None', 'Some', 'and', 'or', 'not'):
             tok_type = TOKEN_KEYWORD
-        elif tok.type in (TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID):
+        elif tok.type in (TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID, TT.T_LONG):
             tok_type = TOKEN_TYPE
         elif word in _OX_TYPES:
             tok_type = TOKEN_TYPE
@@ -741,7 +743,7 @@ _BUILTIN_DOCS: dict[str, str] = {
     'len': 'Return the length of a string or list.\n\n```oxybelis\nfn len(obj: str|List) -> int\n```',
     'push': 'Append a value to a list.\n\n```oxybelis\nfn push(list: List<T>, value: T) -> void\n```',
     'pop': 'Remove and return the last element of a list.\n\n```oxybelis\nfn pop(list: List<T>) -> T\n```',
-    'range': 'Create a range of integers.\n\n```oxybelis\nfn range(end: int) -> List<int>\nfn range(start: int, end: int) -> List<int>\n```',
+    'range': 'Create a range of integers.\n\n```oxybelis\nfn range(end: int) -> List<int>\nfn range(start: int, end: int) -> List<int>\nfn range(start: int, end: int, step: int) -> List<int>\n```',
     'str': 'Convert a value to a string.\n\n```oxybelis\nfn str(value: any) -> str\n```',
     'int': 'Convert a value to an integer.\n\n```oxybelis\nfn int(value: any) -> int\n```',
     'float': 'Convert a value to a float.\n\n```oxybelis\nfn float(value: any) -> float\n```',
@@ -786,6 +788,31 @@ _BUILTIN_DOCS: dict[str, str] = {
     'temp_dir': 'Return the system temp directory path.\n\n```oxybelis\nfn temp_dir() -> str\n```',
     'temp_file': 'Return a temporary file path.\n\n```oxybelis\nfn temp_file() -> str\n```',
     'exit': 'Exit the program with a status code.\n\n```oxybelis\nfn exit(code: int) -> void\n```',
+    'chr': 'Convert an integer to a character string.\n\n```oxybelis\nfn chr(code: int) -> str\n```',
+    'ord': 'Get the Unicode code point of the first character of a string.\n\n```oxybelis\nfn ord(s: str) -> int\n```',
+    'isinstance': 'Check if a value has a given type.\n\n```oxybelis\nfn isinstance(value: any, type: str) -> bool\n```',
+    'zip': 'Combine two lists into a list of pairs.\n\n```oxybelis\nfn zip(a: List<T>, b: List<U>) -> List<(T, U)>\n```',
+    'enumerate': 'Return index-value pairs from a list or string.\n\n```oxybelis\nfn enumerate(list: List<T>) -> List<(int, T)>\nfn enumerate(s: str) -> List<(int, str)>\n```',
+    'batched': 'Split a list or string into batches of size n.\n\n```oxybelis\nfn batched(list: List<T>, n: int) -> List<List<T>>\nfn batched(s: str, n: int) -> List<List<str>>\n```',
+    'map_keys': 'Get all keys from a map as a list.\n\n```oxybelis\nfn map_keys(map: Map<K,V>) -> List<K>\n```',
+    'map_values': 'Get all values from a map as a list.\n\n```oxybelis\nfn map_values(map: Map<K,V>) -> List<V>\n```',
+    'map_items': 'Get all key-value pairs from a map as a list of tuples.\n\n```oxybelis\nfn map_items(map: Map<K,V>) -> List<(K, V)>\n```',
+    'json_parse': 'Parse a JSON string into a JsonValue.\n\n```oxybelis\nfn json_parse(s: str) -> JsonValue\n```',
+    'json_serialize': 'Serialize a JsonValue to a JSON string.\n\n```oxybelis\nfn json_serialize(v: JsonValue) -> str\n```',
+    'json_is_list': 'Check if a JsonValue is a JSON array.\n\n```oxybelis\nfn json_is_list(v: JsonValue) -> bool\n```',
+    'json_is_dict': 'Check if a JsonValue is a JSON object.\n\n```oxybelis\nfn json_is_dict(v: JsonValue) -> bool\n```',
+    'json_is_int': 'Check if a JsonValue is an integer.\n\n```oxybelis\nfn json_is_int(v: JsonValue) -> bool\n```',
+    'json_is_str': 'Check if a JsonValue is a string.\n\n```oxybelis\nfn json_is_str(v: JsonValue) -> bool\n```',
+    'json_is_bool': 'Check if a JsonValue is a boolean.\n\n```oxybelis\nfn json_is_bool(v: JsonValue) -> bool\n```',
+    'json_is_float': 'Check if a JsonValue is a float.\n\n```oxybelis\nfn json_is_float(v: JsonValue) -> bool\n```',
+    'json_as_int': 'Get the integer value of a JsonValue.\n\n```oxybelis\nfn json_as_int(v: JsonValue) -> int\n```',
+    'json_as_str': 'Get the string value of a JsonValue.\n\n```oxybelis\nfn json_as_str(v: JsonValue) -> str\n```',
+    'json_as_list': 'Get the array value of a JsonValue.\n\n```oxybelis\nfn json_as_list(v: JsonValue) -> List<JsonValue>\n```',
+    'json_as_dict': 'Get the object value of a JsonValue.\n\n```oxybelis\nfn json_as_dict(v: JsonValue) -> Map<str, JsonValue>\n```',
+    'json_keys': 'Get the keys of a JSON object.\n\n```oxybelis\nfn json_keys(v: JsonValue) -> List<str>\n```',
+    'json_get': 'Get a value by key from a JSON object.\n\n```oxybelis\nfn json_get(v: JsonValue, key: str) -> Option<JsonValue>\n```',
+    'json_contains': 'Check if a JSON object contains a key.\n\n```oxybelis\nfn json_contains(v: JsonValue, key: str) -> bool\n```',
+    'json_size': 'Get the size of a JSON array or object.\n\n```oxybelis\nfn json_size(v: JsonValue) -> int\n```',
     'map_contains': 'Check if a map contains a key.\n\n```oxybelis\nfn map_contains(map: Map<K,V>, key: K) -> bool\n```',
     'map_get': 'Get a value from a map by key.\n\n```oxybelis\nfn map_get(map: Map<K,V>, key: K) -> Option<V>\n```',
     'map_set': 'Set a value in a map by key.\n\n```oxybelis\nfn map_set(map: Map<K,V>, key: K, value: V) -> void\n```',
@@ -812,6 +839,8 @@ _BUILTIN_DOCS: dict[str, str] = {
     'take_while': 'Take elements from a list while a predicate function is true.\n\n```oxybelis\nfn take_while(list: List<T>, fn: T -> bool) -> List<T>\n```',
     'drop_while': 'Drop elements from a list while a predicate function is true.\n\n```oxybelis\nfn drop_while(list: List<T>, fn: T -> bool) -> List<T>\n```',
     'reversed': 'Reverse a list.\n\n```oxybelis\nfn reversed(list: List<T>) -> List<T>\n```',
+    '_ox_http_request': 'Send an HTTP request and return the response body.\n\n```oxybelis\nfn _ox_http_request(method: str, url: str, headers: str, body: str, timeout: int) -> str\n```',
+    '_ox_http_headers_to_json': 'Convert HTTP headers to a JSON string.\n\n```oxybelis\nfn _ox_http_headers_to_json(headers: void) -> str\n```',
 }
 
 _MATH_DOCS: dict[str, str] = {
@@ -890,12 +919,20 @@ _BUILTIN_KINDS: dict[str, int] = {
     'str_repeat': 3, 'str_reverse': 3, 'str_find': 3,
     'args': 3, 'read_file': 3, 'read_line': 3, 'read_lines': 3, 'write_file': 3,
     'exec': 3, 'eprint': 3, 'eprintln': 3, 'append_file': 3, 'temp_dir': 3, 'temp_file': 3, 'exit': 3,
+    'chr': 3, 'ord': 3, 'isinstance': 3, 'zip': 3, 'enumerate': 3, 'batched': 3,
+    'map_keys': 3, 'map_values': 3, 'map_items': 3,
     'map_contains': 3, 'map_get': 3, 'map_set': 3,
+    'json_parse': 3, 'json_serialize': 3,
+    'json_is_list': 3, 'json_is_dict': 3, 'json_is_int': 3, 'json_is_str': 3, 'json_is_bool': 3, 'json_is_float': 3,
+    'json_as_int': 3, 'json_as_str': 3, 'json_as_list': 3, 'json_as_dict': 3,
+    'json_keys': 3, 'json_get': 3, 'json_contains': 3, 'json_size': 3,
     'list_insert': 3, 'list_remove': 3,
     'fs_exists': 3, 'fs_is_file': 3, 'fs_is_dir': 3, 'fs_mkdir': 3,
     'fs_list_dir': 3, 'fs_remove': 3, 'fs_rename': 3, 'fs_copy': 3, 'fs_cwd': 3,
     'map': 3, 'filter': 3, 'sorted': 3, 'reduce': 3, 'for_each': 3, 'each': 3, 'any': 3, 'all': 3, 'find': 3, 'take_while': 3, 'drop_while': 3, 'reversed': 3,
     'parse_int': 3, 'str_format': 3,
+    '_ox_http_request': 3,
+    '_ox_http_headers_to_json': 3,
 }
 
 for _name, _kind in _BUILTIN_KINDS.items():

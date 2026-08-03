@@ -803,12 +803,18 @@ import json
 import path
 import fs
 import collections
+import math as m
+import heapq as hq
 ```
 
-Modules are `.ox` files searched in:
-1. Source file's directory
-2. Current working directory
-3. `oxlib/` directory adjacent to the compiler
+The `import a.b.c` form imports a module, making its functions, classes, and `pub` constants available as `a.b.c.fn()` and `a.b.c.const`. The `import mod as alias` form creates an alias:
+
+```oxybelis
+import math as m   // Then use m.sqrt, m.PI, etc.
+import heapq as hq // Then use hq.heapify, hq.heappop, etc.
+```
+
+Both forms resolve names from the imported module's namespace into the importing scope.
 
 ### 8.2 Module Structure
 
@@ -1101,7 +1107,7 @@ oxybelis examples/basics.ox --highlight  # syntax highlight & exit (Python versi
 - ✅ Full type checker (`--check`)
 - ✅ Rich diagnostics — `Span`/`Diagnostic` types, severity levels, error codes, source underlines
 - ✅ `--check` flag for type-check-only mode
-- ✅ Self-hosting: `compiler.exe compiler.ox -S` produces a correct `compiler2`.
+- ✅ Self-hosting: `compiler.exe compiler.ox -S` produces a correct `compiler.cpp`.
 - ❌ `--highlight` flag (not yet implemented in self-hosted version)
 
 ### 12.4 LSP Server

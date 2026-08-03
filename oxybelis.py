@@ -12,60 +12,143 @@ import sys
 import os
 from dataclasses import dataclass, field
 
-__version__ = '0.5.0'
+__version__ = "0.5.0"
 __version_info__ = (0, 4, 0)
 from typing import Optional, List as PyList, Any, Tuple
 from enum import Enum, auto
-from ox_diag import (Span, Severity, Diagnostic, SourceFile,
-                     render_diagnostics, highlight_ox)
+from ox_diag import (
+    Span,
+    Severity,
+    Diagnostic,
+    SourceFile,
+    render_diagnostics,
+    highlight_ox,
+)
 
 # ═══════════════════════════════════════════════════════════════
 #  TOKEN TYPES
 # ═══════════════════════════════════════════════════════════════
 
+
 class TT(Enum):
-    INT_LIT=auto(); FLOAT_LIT=auto(); STR_LIT=auto()
-    IDENT=auto()
+    INT_LIT = auto()
+    FLOAT_LIT = auto()
+    STR_LIT = auto()
+    IDENT = auto()
     # Keywords
-    FN=auto(); LET=auto(); VAR=auto(); CLASS=auto()
-    IF=auto(); ELSE=auto(); ELIF=auto()
-    FOR=auto(); IN=auto(); WHILE=auto()
-    RETURN=auto(); MATCH=auto(); LAZY=auto()
-    PUB=auto(); TRUE=auto(); FALSE=auto()
-    KL_NONE=auto(); SOME=auto(); IMPORT=auto()
-    AND=auto(); OR=auto(); NOT=auto()
-    BREAK=auto(); CONTINUE=auto(); YIELD=auto()
-    DEFER=auto(); TRY=auto(); CATCH=auto()
+    FN = auto()
+    LET = auto()
+    VAR = auto()
+    CLASS = auto()
+    IF = auto()
+    ELSE = auto()
+    ELIF = auto()
+    FOR = auto()
+    IN = auto()
+    WHILE = auto()
+    RETURN = auto()
+    MATCH = auto()
+    LAZY = auto()
+    PUB = auto()
+    TRUE = auto()
+    FALSE = auto()
+    KL_NONE = auto()
+    SOME = auto()
+    IMPORT = auto()
+    AS = auto()
+    AND = auto()
+    OR = auto()
+    NOT = auto()
+    BREAK = auto()
+    CONTINUE = auto()
+    YIELD = auto()
+    DEFER = auto()
+    TRY = auto()
+    CATCH = auto()
     # Built-in types
-    T_INT=auto(); T_FLOAT=auto(); T_BOOL=auto()
-    T_STR=auto(); T_VOID=auto()
+    T_INT = auto()
+    T_FLOAT = auto()
+    T_BOOL = auto()
+    T_STR = auto()
+    T_VOID = auto()
+    T_LONG = auto()
     # Operators
-    PLUS=auto(); MINUS=auto(); STAR=auto(); SLASH=auto(); PERCENT=auto()
-    EQ=auto(); NEQ=auto(); LT=auto(); GT=auto(); LEQ=auto(); GEQ=auto()
-    ASSIGN=auto(); PLUS_ASSIGN=auto(); MINUS_ASSIGN=auto()
-    STAR_ASSIGN=auto(); SLASH_ASSIGN=auto()
-    DOTDOT=auto(); ARROW=auto(); FAT_ARROW=auto(); DOT=auto()
-    BANG=auto(); QUESTION=auto(); PIPE=auto()
+    PLUS = auto()
+    MINUS = auto()
+    STAR = auto()
+    SLASH = auto()
+    PERCENT = auto()
+    EQ = auto()
+    NEQ = auto()
+    LT = auto()
+    GT = auto()
+    LEQ = auto()
+    GEQ = auto()
+    ASSIGN = auto()
+    PLUS_ASSIGN = auto()
+    MINUS_ASSIGN = auto()
+    STAR_ASSIGN = auto()
+    SLASH_ASSIGN = auto()
+    DOTDOT = auto()
+    ARROW = auto()
+    FAT_ARROW = auto()
+    DOT = auto()
+    BANG = auto()
+    QUESTION = auto()
+    PIPE = auto()
     # Delimiters
-    LBRACE=auto(); RBRACE=auto(); LPAREN=auto(); RPAREN=auto()
-    LBRACKET=auto(); RBRACKET=auto()
-    COLON=auto(); COMMA=auto(); SEMI=auto()
-    UNDERSCORE=auto(); EOF=auto()
+    LBRACE = auto()
+    RBRACE = auto()
+    LPAREN = auto()
+    RPAREN = auto()
+    LBRACKET = auto()
+    RBRACKET = auto()
+    COLON = auto()
+    COMMA = auto()
+    SEMI = auto()
+    UNDERSCORE = auto()
+    EOF = auto()
+
 
 KEYWORDS = {
-    'fn': TT.FN, 'let': TT.LET, 'var': TT.VAR, 'class': TT.CLASS,
-    'if': TT.IF, 'else': TT.ELSE, 'elif': TT.ELIF,
-    'for': TT.FOR, 'in': TT.IN, 'while': TT.WHILE,
-    'return': TT.RETURN, 'match': TT.MATCH, 'lazy': TT.LAZY,
-    'pub': TT.PUB, 'true': TT.TRUE, 'false': TT.FALSE,
-    'None': TT.KL_NONE, 'Some': TT.SOME, 'import': TT.IMPORT,
-    'and': TT.AND, 'or': TT.OR, 'not': TT.NOT,
-    'break': TT.BREAK, 'continue': TT.CONTINUE, 'yield': TT.YIELD,
-    'defer': TT.DEFER, 'try': TT.TRY, 'catch': TT.CATCH,
-    '_': TT.UNDERSCORE,
-    'int': TT.T_INT, 'float': TT.T_FLOAT, 'bool': TT.T_BOOL,
-    'str': TT.T_STR, 'void': TT.T_VOID,
+    "fn": TT.FN,
+    "let": TT.LET,
+    "var": TT.VAR,
+    "class": TT.CLASS,
+    "if": TT.IF,
+    "else": TT.ELSE,
+    "elif": TT.ELIF,
+    "for": TT.FOR,
+    "in": TT.IN,
+    "while": TT.WHILE,
+    "return": TT.RETURN,
+    "match": TT.MATCH,
+    "lazy": TT.LAZY,
+    "pub": TT.PUB,
+    "true": TT.TRUE,
+    "false": TT.FALSE,
+    "None": TT.KL_NONE,
+    "Some": TT.SOME,
+    "import": TT.IMPORT,
+    "as": TT.AS,
+    "and": TT.AND,
+    "or": TT.OR,
+    "not": TT.NOT,
+    "break": TT.BREAK,
+    "continue": TT.CONTINUE,
+    "yield": TT.YIELD,
+    "defer": TT.DEFER,
+    "try": TT.TRY,
+    "catch": TT.CATCH,
+    "_": TT.UNDERSCORE,
+    "int": TT.T_INT,
+    "float": TT.T_FLOAT,
+    "bool": TT.T_BOOL,
+    "str": TT.T_STR,
+    "void": TT.T_VOID,
+    "long": TT.T_LONG,
 }
+
 
 @dataclass
 class Token:
@@ -75,11 +158,15 @@ class Token:
     col: int = 0
     pos: int = 0
     length: int = 0
-    def __repr__(self): return f"[{self.type.name} {self.value!r} {self.line}:{self.col}]"
+
+    def __repr__(self):
+        return f"[{self.type.name} {self.value!r} {self.line}:{self.col}]"
+
 
 # ═══════════════════════════════════════════════════════════════
 #  LEXER
 # ═══════════════════════════════════════════════════════════════
+
 
 class LexError(Exception):
     def __init__(self, msg, line=0, col=0):
@@ -87,50 +174,58 @@ class LexError(Exception):
         self.col = col
         super().__init__(msg)
 
+
 class Lexer:
     def __init__(self, src: str):
         self.src = src
         self.pos = 0
         self.line = 1
         self.col = 1
-        self.comments: PyList[Tuple[str,int,int]] = []  # (text, line, col)
+        self.comments: PyList[Tuple[str, int, int]] = []  # (text, line, col)
 
     def peek(self, offset=0) -> str:
         i = self.pos + offset
-        return self.src[i] if i < len(self.src) else '\0'
+        return self.src[i] if i < len(self.src) else "\0"
 
     def advance(self) -> str:
-        ch = self.src[self.pos]; self.pos += 1
-        if ch == '\n': self.line += 1; self.col = 1
-        else: self.col += 1
+        ch = self.src[self.pos]
+        self.pos += 1
+        if ch == "\n":
+            self.line += 1
+            self.col = 1
+        else:
+            self.col += 1
         return ch
 
     def tok(self, tt: TT, val: str, line: int, col: int, length: int = 0) -> Token:
         return Token(tt, val, line, col, self.pos, length or len(val))
 
     def tok_eof(self) -> Token:
-        return Token(TT.EOF, '', self.line, self.col, self.pos, 0)
+        return Token(TT.EOF, "", self.line, self.col, self.pos, 0)
 
     def skip_trivia(self):
         while self.pos < len(self.src):
             ch = self.peek()
-            if ch in ' \t\r\n':
+            if ch in " \t\r\n":
                 self.advance()
-            elif ch == '/' and self.peek(1) == '/':
+            elif ch == "/" and self.peek(1) == "/":
                 line, col = self.line, self.col
                 start = self.pos
-                while self.pos < len(self.src) and self.peek() != '\n':
+                while self.pos < len(self.src) and self.peek() != "\n":
                     self.advance()
-                self.comments.append((self.src[start:self.pos], line, col))
-            elif ch == '/' and self.peek(1) == '*':
+                self.comments.append((self.src[start : self.pos], line, col))
+            elif ch == "/" and self.peek(1) == "*":
                 line, col = self.line, self.col
                 start = self.pos
-                self.advance(); self.advance()
+                self.advance()
+                self.advance()
                 while self.pos < len(self.src):
-                    if self.peek() == '*' and self.peek(1) == '/':
-                        self.advance(); self.advance(); break
+                    if self.peek() == "*" and self.peek(1) == "/":
+                        self.advance()
+                        self.advance()
+                        break
                     self.advance()
-                self.comments.append((self.src[start:self.pos], line, col))
+                self.comments.append((self.src[start : self.pos], line, col))
             else:
                 break
 
@@ -139,196 +234,410 @@ class Lexer:
         while True:
             self.skip_trivia()
             if self.pos >= len(self.src):
-                tokens.append(self.tok_eof()); break
+                tokens.append(self.tok_eof())
+                break
 
             line, col = self.line, self.col
             ch = self.peek()
 
             # ── Numbers ───────────────────────────────────────
             if ch.isdigit():
-                num = ''; is_f = False
-                while self.pos < len(self.src) and (self.peek().isdigit() or self.peek() == '.'):
-                    if self.peek() == '.':
-                        if is_f or self.peek(1) == '.': break
+                num = ""
+                is_f = False
+                while self.pos < len(self.src) and (
+                    self.peek().isdigit() or self.peek() == "."
+                ):
+                    if self.peek() == ".":
+                        if is_f or self.peek(1) == ".":
+                            break
                         is_f = True
                     num += self.advance()
-                tokens.append(self.tok(TT.FLOAT_LIT if is_f else TT.INT_LIT, num, line, col))
+                tokens.append(
+                    self.tok(TT.FLOAT_LIT if is_f else TT.INT_LIT, num, line, col)
+                )
                 continue
 
             # ── Strings ───────────────────────────────────────
             if ch == '"':
                 tok_pos = self.pos
-                self.advance(); s = ''
+                self.advance()
+                s = ""
                 while self.pos < len(self.src) and self.peek() != '"':
                     c = self.advance()
-                    if c == '\\':
+                    if c == "\\":
                         esc = self.advance()
-                        s += {'n':'\n','t':'\t','\\':'\\','"':'"','r':'\r'}.get(esc, esc)
+                        s += {
+                            "n": "\n",
+                            "t": "\t",
+                            "\\": "\\",
+                            '"': '"',
+                            "r": "\r",
+                        }.get(esc, esc)
                     else:
                         s += c
                 if self.pos >= len(self.src):
                     raise LexError("Unterminated string", line, col)
                 self.advance()
                 tok_len = self.pos - tok_pos
-                tokens.append(self.tok(TT.STR_LIT, s, line, col, tok_len)); continue
+                tokens.append(self.tok(TT.STR_LIT, s, line, col, tok_len))
+                continue
 
             # ── Identifiers & keywords ────────────────────────
-            if ch.isalpha() or ch == '_':
-                word = ''
-                while self.pos < len(self.src) and (self.peek().isalnum() or self.peek() == '_'):
+            if ch.isalpha() or ch == "_":
+                word = ""
+                while self.pos < len(self.src) and (
+                    self.peek().isalnum() or self.peek() == "_"
+                ):
                     word += self.advance()
-                tokens.append(self.tok(KEYWORDS.get(word, TT.IDENT), word, line, col)); continue
+                tokens.append(self.tok(KEYWORDS.get(word, TT.IDENT), word, line, col))
+                continue
 
             # ── Operators & delimiters ────────────────────────
-            self.advance(); nxt = self.peek()
+            self.advance()
+            nxt = self.peek()
+
             def op2(s, tt2, tt1):
                 nonlocal nxt
-                if nxt == s: self.advance(); tokens.append(self.tok(tt2, ch+s, line, col))
-                else: tokens.append(self.tok(tt1, ch, line, col))
+                if nxt == s:
+                    self.advance()
+                    tokens.append(self.tok(tt2, ch + s, line, col))
+                else:
+                    tokens.append(self.tok(tt1, ch, line, col))
 
-            if   ch == '-':
-                if nxt == '>': self.advance(); tokens.append(self.tok(TT.ARROW,       '->', line, col))
-                elif nxt=='=': self.advance(); tokens.append(self.tok(TT.MINUS_ASSIGN,'-=', line, col))
-                else:                          tokens.append(self.tok(TT.MINUS,       '-',  line, col))
-            elif ch == '=':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.EQ,          '==',line, col))
-                elif nxt=='>': self.advance(); tokens.append(self.tok(TT.FAT_ARROW,   '=>', line, col))
-                else:                          tokens.append(self.tok(TT.ASSIGN,      '=',  line, col))
-            elif ch == '!': op2('=', TT.NEQ, TT.BANG)
-            elif ch == '<':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.LEQ, '<=', line, col))
-                else:                          tokens.append(self.tok(TT.LT,  '<',  line, col))
-            elif ch == '>':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.GEQ, '>=', line, col))
-                else:                          tokens.append(self.tok(TT.GT,  '>',  line, col))
-            elif ch == '+':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.PLUS_ASSIGN, '+=', line, col))
-                else:                          tokens.append(self.tok(TT.PLUS,        '+',  line, col))
-            elif ch == '*':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.STAR_ASSIGN, '*=', line, col))
-                else:                          tokens.append(self.tok(TT.STAR,        '*',  line, col))
-            elif ch == '/':
-                if nxt == '=': self.advance(); tokens.append(self.tok(TT.SLASH_ASSIGN,'/=', line, col))
-                else:                          tokens.append(self.tok(TT.SLASH,       '/',  line, col))
-            elif ch == '.':
-                if nxt == '.': self.advance(); tokens.append(self.tok(TT.DOTDOT, '..', line, col))
-                else:                          tokens.append(self.tok(TT.DOT,    '.',  line, col))
-            elif ch == '%':  tokens.append(self.tok(TT.PERCENT,  '%', line, col))
-            elif ch == '{':  tokens.append(self.tok(TT.LBRACE,   '{', line, col))
-            elif ch == '}':  tokens.append(self.tok(TT.RBRACE,   '}', line, col))
-            elif ch == '(':  tokens.append(self.tok(TT.LPAREN,   '(', line, col))
-            elif ch == ')':  tokens.append(self.tok(TT.RPAREN,   ')', line, col))
-            elif ch == '[':  tokens.append(self.tok(TT.LBRACKET, '[', line, col))
-            elif ch == ']':  tokens.append(self.tok(TT.RBRACKET, ']', line, col))
-            elif ch == ':':  tokens.append(self.tok(TT.COLON,    ':', line, col))
-            elif ch == ',':  tokens.append(self.tok(TT.COMMA,    ',', line, col))
-            elif ch == ';':  tokens.append(self.tok(TT.SEMI,     ';', line, col))
-            elif ch == '?':  tokens.append(self.tok(TT.QUESTION,'?', line, col))
-            elif ch == '|':  tokens.append(self.tok(TT.PIPE,    '|', line, col))
-            else: raise LexError(f"Unknown character {ch!r}", line, col)
+            if ch == "-":
+                if nxt == ">":
+                    self.advance()
+                    tokens.append(self.tok(TT.ARROW, "->", line, col))
+                elif nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.MINUS_ASSIGN, "-=", line, col))
+                else:
+                    tokens.append(self.tok(TT.MINUS, "-", line, col))
+            elif ch == "=":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.EQ, "==", line, col))
+                elif nxt == ">":
+                    self.advance()
+                    tokens.append(self.tok(TT.FAT_ARROW, "=>", line, col))
+                else:
+                    tokens.append(self.tok(TT.ASSIGN, "=", line, col))
+            elif ch == "!":
+                op2("=", TT.NEQ, TT.BANG)
+            elif ch == "<":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.LEQ, "<=", line, col))
+                else:
+                    tokens.append(self.tok(TT.LT, "<", line, col))
+            elif ch == ">":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.GEQ, ">=", line, col))
+                else:
+                    tokens.append(self.tok(TT.GT, ">", line, col))
+            elif ch == "+":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.PLUS_ASSIGN, "+=", line, col))
+                else:
+                    tokens.append(self.tok(TT.PLUS, "+", line, col))
+            elif ch == "*":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.STAR_ASSIGN, "*=", line, col))
+                else:
+                    tokens.append(self.tok(TT.STAR, "*", line, col))
+            elif ch == "/":
+                if nxt == "=":
+                    self.advance()
+                    tokens.append(self.tok(TT.SLASH_ASSIGN, "/=", line, col))
+                else:
+                    tokens.append(self.tok(TT.SLASH, "/", line, col))
+            elif ch == ".":
+                if nxt == ".":
+                    self.advance()
+                    tokens.append(self.tok(TT.DOTDOT, "..", line, col))
+                else:
+                    tokens.append(self.tok(TT.DOT, ".", line, col))
+            elif ch == "%":
+                tokens.append(self.tok(TT.PERCENT, "%", line, col))
+            elif ch == "{":
+                tokens.append(self.tok(TT.LBRACE, "{", line, col))
+            elif ch == "}":
+                tokens.append(self.tok(TT.RBRACE, "}", line, col))
+            elif ch == "(":
+                tokens.append(self.tok(TT.LPAREN, "(", line, col))
+            elif ch == ")":
+                tokens.append(self.tok(TT.RPAREN, ")", line, col))
+            elif ch == "[":
+                tokens.append(self.tok(TT.LBRACKET, "[", line, col))
+            elif ch == "]":
+                tokens.append(self.tok(TT.RBRACKET, "]", line, col))
+            elif ch == ":":
+                tokens.append(self.tok(TT.COLON, ":", line, col))
+            elif ch == ",":
+                tokens.append(self.tok(TT.COMMA, ",", line, col))
+            elif ch == ";":
+                tokens.append(self.tok(TT.SEMI, ";", line, col))
+            elif ch == "?":
+                tokens.append(self.tok(TT.QUESTION, "?", line, col))
+            elif ch == "|":
+                tokens.append(self.tok(TT.PIPE, "|", line, col))
+            else:
+                raise LexError(f"Unknown character {ch!r}", line, col)
 
         return tokens
+
 
 # ═══════════════════════════════════════════════════════════════
 #  AST NODES
 # ═══════════════════════════════════════════════════════════════
 
+
 @dataclass
-class Program:      stmts: PyList[Any]
+class Program:
+    stmts: PyList[Any]
+
+
 @dataclass
 class FnDef:
-    name: str; params: PyList[Tuple[str,str]]; return_type: str; body: PyList[Any]
-    is_pub: bool=False; is_lazy: bool=False
-    generics: PyList[str]=field(default_factory=list); has_self: bool=False
+    name: str
+    params: PyList[Tuple[str, str]]
+    return_type: str
+    body: PyList[Any]
+    is_pub: bool = False
+    is_lazy: bool = False
+    generics: PyList[str] = field(default_factory=list)
+    has_self: bool = False
+
+
 @dataclass
 class ClassDef:
-    name: str; fields: PyList[Tuple[str,str]]; methods: PyList[Any]
-    generics: PyList[str]=field(default_factory=list)
+    name: str
+    fields: PyList[Tuple[str, str]]
+    methods: PyList[Any]
+    generics: PyList[str] = field(default_factory=list)
+
+
 @dataclass
-class ImportStmt:   path: PyList[str]
+class ImportStmt:
+    path: PyList[str]
+    alias: str = ""
+
+
 @dataclass
-class VarDecl:      name: str; type_ann: Optional[str]; value: Any; mutable: bool
+class VarDecl:
+    name: str
+    type_ann: Optional[str]
+    value: Any
+    mutable: bool
+    pub: bool = False
+
+
 @dataclass
-class Assignment:   target: Any; value: Any; op: str='='
+class Assignment:
+    target: Any
+    value: Any
+    op: str = "="
+
+
 @dataclass
-class ReturnStmt:   value: Optional[Any]
+class ReturnStmt:
+    value: Optional[Any]
+
+
 @dataclass
-class BreakStmt:    pass
+class BreakStmt:
+    pass
+
+
 @dataclass
-class ContinueStmt: pass
+class ContinueStmt:
+    pass
+
+
 @dataclass
-class YieldStmt:    value: Any
+class YieldStmt:
+    value: Any
+
+
 @dataclass
 class IfStmt:
-    cond: Any; then_body: PyList[Any]
-    elif_clauses: PyList[Tuple[Any,PyList[Any]]]; else_body: Optional[PyList[Any]]
+    cond: Any
+    then_body: PyList[Any]
+    elif_clauses: PyList[Tuple[Any, PyList[Any]]]
+    else_body: Optional[PyList[Any]]
+
+
 @dataclass
 class ForStmt:
-    var: str; iterable: Any; body: PyList[Any]
+    var: str
+    iterable: Any
+    body: PyList[Any]
     vars: PyList[str] = field(default_factory=list)
+
+
 @dataclass
-class WhileStmt:    cond: Any; body: PyList[Any]
+class WhileStmt:
+    cond: Any
+    body: PyList[Any]
+
+
 @dataclass
-class MatchStmt:    subject: Any; arms: PyList[Tuple[Any,PyList[Any]]]
+class MatchStmt:
+    subject: Any
+    arms: PyList[Tuple[Any, PyList[Any]]]
+
+
 @dataclass
-class ExprStmt:     expr: Any
+class ExprStmt:
+    expr: Any
+
+
 @dataclass
-class DeferStmt:    expr: Any
+class DeferStmt:
+    expr: Any
+
+
 @dataclass
 class TryCatchStmt:
-    try_body: PyList[Any]; catch_var: str; catch_body: PyList[Any]
+    try_body: PyList[Any]
+    catch_var: str
+    catch_body: PyList[Any]
+
+
 # Expressions
 @dataclass
-class BinOp:        op: str; left: Any; right: Any
+class BinOp:
+    op: str
+    left: Any
+    right: Any
+
+
 @dataclass
-class UnaryOp:      op: str; operand: Any
+class UnaryOp:
+    op: str
+    operand: Any
+
+
 @dataclass
-class FnCall:       func: Any; args: PyList[Any]; type_args: PyList[str]=field(default_factory=list)
+class FnCall:
+    func: Any
+    args: PyList[Any]
+    type_args: PyList[str] = field(default_factory=list)
+
+
 @dataclass
-class MethodCall:   obj: Any; name: str; args: PyList[Any]
+class MethodCall:
+    obj: Any
+    name: str
+    args: PyList[Any]
+
+
 @dataclass
-class Attr:         obj: Any; name: str
+class Attr:
+    obj: Any
+    name: str
+
+
 @dataclass
-class Index:        obj: Any; idx: Any
+class Index:
+    obj: Any
+    idx: Any
+
+
 @dataclass
-class Ident:        name: str
+class Ident:
+    name: str
+
+
 @dataclass
-class IntLit:       value: int
+class IntLit:
+    value: int
+
+
 @dataclass
-class FloatLit:     value: float
+class FloatLit:
+    value: float
+
+
 @dataclass
-class StrLit:       value: str
+class StrLit:
+    value: str
+
+
 @dataclass
-class BoolLit:      value: bool
+class BoolLit:
+    value: bool
+
+
 @dataclass
-class NoneLit:      pass
+class NoneLit:
+    pass
+
+
 @dataclass
-class SomeLit:      value: Any
+class SomeLit:
+    value: Any
+
+
 @dataclass
-class ListLit:      elems: PyList[Any]
+class ListLit:
+    elems: PyList[Any]
+
+
 @dataclass
-class TupleLit:     elems: PyList[Any]
+class TupleLit:
+    elems: PyList[Any]
+
+
 @dataclass
-class LambdaExpr:   params: PyList[str]; body: Any
+class LambdaExpr:
+    params: PyList[str]
+    body: Any
+
+
 @dataclass
-class TernaryExpr:  then_expr: Any; cond: Any; else_expr: Any
+class TernaryExpr:
+    then_expr: Any
+    cond: Any
+    else_expr: Any
+
+
 @dataclass
-class StructLit:    type_name: str; fields: PyList[Tuple[str,Any]]
+class StructLit:
+    type_name: str
+    fields: PyList[Tuple[str, Any]]
+
+
 @dataclass
-class RangeLit:     start: Any; end: Any
+class RangeLit:
+    start: Any
+    end: Any
+
+
 @dataclass
 class SliceLit:
     start: Optional[Any] = None
     end: Optional[Any] = None
     step: Optional[Any] = None
+
+
 @dataclass
-class WildCard:     pass
+class WildCard:
+    pass
+
+
 @dataclass
-class TryOp:        value: Any
+class TryOp:
+    value: Any
+
 
 # ═══════════════════════════════════════════════════════════════
 #  PARSER
 # ═══════════════════════════════════════════════════════════════
+
 
 class ParseError(Exception):
     def __init__(self, msg, line=0, col=0):
@@ -336,9 +645,11 @@ class ParseError(Exception):
         self.col = col
         super().__init__(msg)
 
+
 class Parser:
-    def __init__(self, tokens: PyList[Token], source: str = ''):
-        self.tokens = tokens; self.pos = 0
+    def __init__(self, tokens: PyList[Token], source: str = ""):
+        self.tokens = tokens
+        self.pos = 0
         self._source = source
         self._spans: dict = {}  # id(node) -> Span
 
@@ -355,7 +666,9 @@ class Parser:
     def _set_span_range(self, node, start, end):
         s = self._tok_span(start)
         e = self._tok_span(end)
-        self._spans[id(node)] = Span(s.start, e.end, s.start_line, s.start_col, e.end_line, e.end_col)
+        self._spans[id(node)] = Span(
+            s.start, e.end, s.start_line, s.start_col, e.end_line, e.end_col
+        )
 
     def _span_of(self, node) -> Optional[Span]:
         return self._spans.get(id(node))
@@ -372,21 +685,25 @@ class Parser:
 
     def advance(self) -> Token:
         t = self.tokens[self.pos]
-        if self.pos < len(self.tokens)-1: self.pos += 1
+        if self.pos < len(self.tokens) - 1:
+            self.pos += 1
         return t
 
     def expect(self, *tts: TT) -> Token:
         t = self.peek()
         if t.type not in tts:
-            exp = ', '.join(tt.name for tt in tts)
-            raise ParseError(f"Expected {exp}, got {t.type.name} ({t.value!r})", t.line, t.col)
+            exp = ", ".join(tt.name for tt in tts)
+            raise ParseError(
+                f"Expected {exp}, got {t.type.name} ({t.value!r})", t.line, t.col
+            )
         return self.advance()
 
     def match_tok(self, *tts: TT) -> Optional[Token]:
         return self.advance() if self.check(*tts) else None
 
     def skip_semis(self):
-        while self.match_tok(TT.SEMI): pass
+        while self.match_tok(TT.SEMI):
+            pass
 
     # ── Top level ──────────────────────────────────────────────
 
@@ -394,34 +711,47 @@ class Parser:
         stmts: PyList[Any] = []
         while not self.check(TT.EOF):
             self.skip_semis()
-            if self.check(TT.EOF): break
+            if self.check(TT.EOF):
+                break
             stmts.append(self.parse_top())
             self.skip_semis()
         return Program(stmts)
 
     def parse_top(self):
-        is_pub  = bool(self.match_tok(TT.PUB))
+        is_pub = bool(self.match_tok(TT.PUB))
         is_lazy = bool(self.match_tok(TT.LAZY))
-        if self.check(TT.FN):     return self.parse_fn(is_pub, is_lazy)
-        if self.check(TT.CLASS):  return self.parse_class()
-        if self.check(TT.IMPORT): return self.parse_import()
-        if self.check(TT.LET, TT.VAR): return self.parse_var_decl()
+        if self.check(TT.FN):
+            return self.parse_fn(is_pub, is_lazy)
+        if self.check(TT.CLASS):
+            return self.parse_class()
+        if self.check(TT.IMPORT):
+            return self.parse_import()
+        if self.check(TT.LET, TT.VAR):
+            v = self.parse_var_decl()
+            v.pub = is_pub
+            return v
         t = self.peek()
-        raise ParseError(f"Unexpected token {t.type.name} ({t.value!r}) at top level", t.line, t.col)
+        raise ParseError(
+            f"Unexpected token {t.type.name} ({t.value!r}) at top level", t.line, t.col
+        )
 
     def parse_import(self) -> ImportStmt:
         self.expect(TT.IMPORT)
         path = [self.expect(TT.IDENT).value]
         while self.match_tok(TT.DOT):
             path.append(self.expect(TT.IDENT).value)
-        return ImportStmt(path)
+        alias = ""
+        if self.match_tok(TT.AS):
+            alias = self.expect(TT.IDENT).value
+        return ImportStmt(path, alias)
 
     def parse_generics(self) -> PyList[str]:
         gs: PyList[str] = []
         if self.match_tok(TT.LT):
             while not self.check(TT.GT):
                 gs.append(self.expect(TT.IDENT).value)
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
             self.expect(TT.GT)
         return gs
 
@@ -432,13 +762,14 @@ class Parser:
         name = self.expect(TT.IDENT).value
         generics = self.parse_generics()
         self.expect(TT.LPAREN)
-        params: PyList[Tuple[str,str]] = []
+        params: PyList[Tuple[str, str]] = []
         has_self = False
 
         if not self.check(TT.RPAREN):
             # self parameter
-            if self.peek().value == 'self' and self.peek().type == TT.IDENT:
-                has_self = True; self.advance()
+            if self.peek().value == "self" and self.peek().type == TT.IDENT:
+                has_self = True
+                self.advance()
                 self.match_tok(TT.COMMA)
             while not self.check(TT.RPAREN, TT.EOF):
                 pname_tok = self.peek()
@@ -451,11 +782,13 @@ class Parser:
                 if self.match_tok(TT.ASSIGN):
                     default = self.parse_expr()
                 params.append((pname, ptype, default, pname_node))
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
 
         self.expect(TT.RPAREN)
-        ret = 'void'
-        if self.match_tok(TT.ARROW): ret = self.parse_type()
+        ret = "void"
+        if self.match_tok(TT.ARROW):
+            ret = self.parse_type()
         body = self.parse_block()
         n = FnDef(name, params, ret, body, is_pub, is_lazy, generics, has_self)
         self._set_span_range(n, fn_tok, self.peek())
@@ -467,12 +800,13 @@ class Parser:
         name = self.expect(TT.IDENT).value
         generics = self.parse_generics()
         self.expect(TT.LBRACE)
-        fields: PyList[Tuple[str,str]] = []
+        fields: PyList[Tuple[str, str]] = []
         methods: PyList[FnDef] = []
         while not self.check(TT.RBRACE, TT.EOF):
             self.skip_semis()
-            if self.check(TT.RBRACE): break
-            is_pub  = bool(self.match_tok(TT.PUB))
+            if self.check(TT.RBRACE):
+                break
+            is_pub = bool(self.match_tok(TT.PUB))
             is_lazy = bool(self.match_tok(TT.LAZY))
             if self.check(TT.FN):
                 methods.append(self.parse_fn(is_pub, is_lazy))
@@ -488,28 +822,42 @@ class Parser:
         return n
 
     def parse_type(self) -> str:
-        type_kws = {TT.T_INT:'int', TT.T_FLOAT:'float', TT.T_BOOL:'bool',
-                    TT.T_STR:'str', TT.T_VOID:'void'}
+        type_kws = {
+            TT.T_INT: "int",
+            TT.T_FLOAT: "float",
+            TT.T_BOOL: "bool",
+            TT.T_STR: "str",
+            TT.T_VOID: "void",
+            TT.T_LONG: "long",
+        }
         t = self.peek()
         if t.type in type_kws:
-            self.advance(); return type_kws[t.type]
+            self.advance()
+            return type_kws[t.type]
         if t.type == TT.LPAREN:
             self.advance()
             types = []
             while not self.check(TT.RPAREN):
                 types.append(self.parse_type())
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
             self.expect(TT.RPAREN)
             return f"({', '.join(types)})"
         if t.type == TT.IDENT:
             name = self.advance().value
-            type_aliases = {'list':'List', 'option':'Option', 'result':'Result', 'map':'Map'}
+            type_aliases = {
+                "list": "List",
+                "option": "Option",
+                "result": "Result",
+                "map": "Map",
+            }
             name = type_aliases.get(name, name)
             if self.match_tok(TT.LT):
                 args = []
                 while not self.check(TT.GT):
                     args.append(self.parse_type())
-                    if not self.match_tok(TT.COMMA): break
+                    if not self.match_tok(TT.COMMA):
+                        break
                 self.expect(TT.GT)
                 return f"{name}<{', '.join(args)}>"
             return name
@@ -520,7 +868,8 @@ class Parser:
         stmts: PyList[Any] = []
         while not self.check(TT.RBRACE, TT.EOF):
             self.skip_semis()
-            if self.check(TT.RBRACE): break
+            if self.check(TT.RBRACE):
+                break
             stmts.append(self.parse_stmt())
             self.skip_semis()
         self.expect(TT.RBRACE)
@@ -529,31 +878,49 @@ class Parser:
     # ── Statements ─────────────────────────────────────────────
 
     def parse_stmt(self):
-        if self.check(TT.LET, TT.VAR):   return self.parse_var_decl()
-        if self.check(TT.RETURN):         return self.parse_return()
-        if self.check(TT.IF):             return self.parse_if()
-        if self.check(TT.FOR):            return self.parse_for()
-        if self.check(TT.WHILE):          return self.parse_while()
-        if self.check(TT.MATCH):          return self.parse_match()
-        if self.check(TT.FN):             return self.parse_fn()
+        if self.check(TT.LET, TT.VAR):
+            return self.parse_var_decl()
+        if self.check(TT.RETURN):
+            return self.parse_return()
+        if self.check(TT.IF):
+            return self.parse_if()
+        if self.check(TT.FOR):
+            return self.parse_for()
+        if self.check(TT.WHILE):
+            return self.parse_while()
+        if self.check(TT.MATCH):
+            return self.parse_match()
+        if self.check(TT.FN):
+            return self.parse_fn()
         if self.check(TT.BREAK):
-            t = self.peek(); self.advance(); n = BreakStmt(); self._set_span(n, t); return n
+            t = self.peek()
+            self.advance()
+            n = BreakStmt()
+            self._set_span(n, t)
+            return n
         if self.check(TT.CONTINUE):
-            t = self.peek(); self.advance(); n = ContinueStmt(); self._set_span(n, t); return n
+            t = self.peek()
+            self.advance()
+            n = ContinueStmt()
+            self._set_span(n, t)
+            return n
         if self.check(TT.YIELD):
-            t = self.peek(); self.advance()
+            t = self.peek()
+            self.advance()
             value = self.parse_expr()
             n = YieldStmt(value)
             self._set_span_range(n, t, self.peek())
             return n
         if self.check(TT.DEFER):
-            t = self.peek(); self.advance()
+            t = self.peek()
+            self.advance()
             expr = self.parse_expr()
             n = DeferStmt(expr)
             self._set_span_range(n, t, self.peek())
             return n
         if self.check(TT.TRY):
-            t = self.peek(); self.advance()
+            t = self.peek()
+            self.advance()
             try_body = self.parse_block()
             self.expect(TT.CATCH)
             catch_var = self.expect(TT.IDENT).value
@@ -562,8 +929,9 @@ class Parser:
             self._set_span_range(n, t, self.peek())
             return n
         expr = self.parse_expr()
-        if self.check(TT.ASSIGN, TT.PLUS_ASSIGN, TT.MINUS_ASSIGN,
-                      TT.STAR_ASSIGN, TT.SLASH_ASSIGN):
+        if self.check(
+            TT.ASSIGN, TT.PLUS_ASSIGN, TT.MINUS_ASSIGN, TT.STAR_ASSIGN, TT.SLASH_ASSIGN
+        ):
             op_t = self.peek()
             op = self.advance().value
             rhs = self.parse_expr()
@@ -572,7 +940,8 @@ class Parser:
             return n
         n = ExprStmt(expr)
         sp = self._spans.get(id(expr))
-        if sp: self._spans[id(n)] = sp
+        if sp:
+            self._spans[id(n)] = sp
         return n
 
     def parse_var_decl(self) -> VarDecl:
@@ -585,11 +954,13 @@ class Parser:
             var_names = []
             while not self.check(TT.RPAREN, TT.EOF):
                 var_names.append(self.expect(TT.IDENT).value)
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
             self.expect(TT.RPAREN)
-            name = ','.join(var_names)
+            name = ",".join(var_names)
             type_ann = None
-            if self.match_tok(TT.COLON): type_ann = self.parse_type()
+            if self.match_tok(TT.COLON):
+                type_ann = self.parse_type()
             self.expect(TT.ASSIGN)
             value = self.parse_expr()
             n = VarDecl(name, type_ann, value, mutable)
@@ -600,7 +971,8 @@ class Parser:
         name_node = Ident(name)
         self._set_span(name_node, name_tok)
         type_ann = None
-        if self.match_tok(TT.COLON): type_ann = self.parse_type()
+        if self.match_tok(TT.COLON):
+            type_ann = self.parse_type()
         self.expect(TT.ASSIGN)
         value = self.parse_expr()
         n = VarDecl(name, type_ann, value, mutable)
@@ -612,23 +984,28 @@ class Parser:
         st = self.peek()
         self.expect(TT.RETURN)
         if self.check(TT.RBRACE, TT.SEMI, TT.EOF):
-            n = ReturnStmt(None); self._set_span(n, st); return n
+            n = ReturnStmt(None)
+            self._set_span(n, st)
+            return n
         val = self.parse_expr()
-        n = ReturnStmt(val); self._set_span_range(n, st, self.peek()); return n
+        n = ReturnStmt(val)
+        self._set_span_range(n, st, self.peek())
+        return n
 
     def parse_if(self) -> IfStmt:
         st = self.peek()
         self.expect(TT.IF)
         cond = self.parse_expr()
         then = self.parse_block()
-        elifs: PyList[Tuple[Any,PyList[Any]]] = []
+        elifs: PyList[Tuple[Any, PyList[Any]]] = []
         else_b: Optional[PyList[Any]] = None
         while self.check(TT.ELIF):
             self.advance()
             ec = self.parse_expr()
             eb = self.parse_block()
             elifs.append((ec, eb))
-        if self.match_tok(TT.ELSE): else_b = self.parse_block()
+        if self.match_tok(TT.ELSE):
+            else_b = self.parse_block()
         n = IfStmt(cond, then, elifs, else_b)
         self._set_span_range(n, st, self.peek())
         return n
@@ -641,9 +1018,10 @@ class Parser:
             vars = []
             while not self.check(TT.RPAREN, TT.EOF):
                 vars.append(self.expect(TT.IDENT).value)
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
             self.expect(TT.RPAREN)
-            var = ','.join(vars)
+            var = ",".join(vars)
         else:
             var = self.expect(TT.IDENT).value
             vars = [var]
@@ -668,10 +1046,11 @@ class Parser:
         self.expect(TT.MATCH)
         subject = self.parse_expr()
         self.expect(TT.LBRACE)
-        arms: PyList[Tuple[Any,PyList[Any]]] = []
+        arms: PyList[Tuple[Any, PyList[Any]]] = []
         while not self.check(TT.RBRACE, TT.EOF):
             self.skip_semis()
-            if self.check(TT.RBRACE): break
+            if self.check(TT.RBRACE):
+                break
             pat = self.parse_pattern()
             self.expect(TT.FAT_ARROW)
             body = self.parse_block() if self.check(TT.LBRACE) else [self.parse_stmt()]
@@ -683,7 +1062,9 @@ class Parser:
         return n
 
     def parse_pattern(self):
-        if self.check(TT.UNDERSCORE): self.advance(); return WildCard()
+        if self.check(TT.UNDERSCORE):
+            self.advance()
+            return WildCard()
         expr = self.parse_primary()
         if self.match_tok(TT.DOTDOT):
             end = self.parse_primary()
@@ -702,18 +1083,50 @@ class Parser:
                 self.advance()
                 else_expr = self.parse_if_expr()
                 n = TernaryExpr(expr, cond, else_expr)
-                self._set_span_range(n, getattr(expr, '_span_start', None) or self.peek(), self.peek())
+                self._set_span_range(
+                    n, getattr(expr, "_span_start", None) or self.peek(), self.peek()
+                )
                 return n
             self.pos = saved  # backtrack — not a ternary
         return expr
 
     def parse_expr(self):
         expr = self.parse_if_expr()
+        # C-style ternary: cond ? then : else (binds looser than comparisons)
+        if self.check(TT.QUESTION) and self._is_c_ternary():
+            self.advance()
+            then_expr = self.parse_expr()
+            self.expect(TT.COLON)
+            else_expr = self.parse_expr()
+            n = TernaryExpr(then_expr, expr, else_expr)
+            self._set_span_range(
+                n, getattr(expr, "_span_start", None) or self.peek(), self.peek()
+            )
+            expr = n
         # Range: a..b  (lower precedence than everything else)
         if self.match_tok(TT.DOTDOT):
             end = self.parse_if_expr()
             return RangeLit(expr, end)
         return expr
+
+    def _is_c_ternary(self) -> bool:
+        # True when scanning forward from the current '?' token we find a ':'
+        # at nesting depth 0 before any of , ) ] } ; or EOF
+        depth = 0
+        for t in self.tokens[self.pos + 1 :]:
+            tt = t.type
+            if tt in (TT.LPAREN, TT.LBRACKET, TT.LBRACE):
+                depth += 1
+            elif tt in (TT.RPAREN, TT.RBRACKET, TT.RBRACE):
+                if depth == 0:
+                    return False
+                depth -= 1
+            elif depth == 0:
+                if tt == TT.COLON:
+                    return True
+                if tt in (TT.COMMA, TT.SEMI, TT.EOF):
+                    return False
+        return False
 
     def _binop(self, left_gen, ops):
         left = left_gen()
@@ -722,7 +1135,9 @@ class Parser:
             op = self.advance().value
             right = left_gen()
             n = BinOp(op, left, right)
-            self._set_span_range(n, self._spans.get(id(left), op_tok), self._spans.get(id(right), op_tok))
+            self._set_span_range(
+                n, self._spans.get(id(left), op_tok), self._spans.get(id(right), op_tok)
+            )
             left = n
         return left
 
@@ -733,7 +1148,9 @@ class Parser:
         return self._binop(self.parse_compare, [TT.AND])
 
     def parse_compare(self):
-        return self._binop(self.parse_add, [TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ, TT.IN])
+        return self._binop(
+            self.parse_add, [TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LEQ, TT.GEQ, TT.IN]
+        )
 
     def parse_add(self):
         return self._binop(self.parse_mul, [TT.PLUS, TT.MINUS])
@@ -767,14 +1184,20 @@ class Parser:
                 name = self.expect(TT.IDENT).value
                 # Generic type args on method call: obj.method<Type>(args)
                 if self.check(TT.LT):
-                    saved = self.pos; self.advance()
+                    saved = self.pos
+                    self.advance()
                     next_t = self.peek()
-                    type_kw_set = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID}
-                    if (next_t.type == TT.IDENT and next_t.value and next_t.value[0].isupper()) or next_t.type in type_kw_set:
+                    type_kw_set = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID, TT.T_LONG}
+                    if (
+                        next_t.type == TT.IDENT
+                        and next_t.value
+                        and next_t.value[0].isupper()
+                    ) or next_t.type in type_kw_set:
                         args: PyList[str] = []
                         while not self.check(TT.GT):
                             args.append(self.parse_type())
-                            if not self.match_tok(TT.COMMA): break
+                            if not self.match_tok(TT.COMMA):
+                                break
                         self.expect(TT.GT)
                         name = f"{name}<{', '.join(args)}>"
                     else:
@@ -785,7 +1208,8 @@ class Parser:
                     args: PyList[Any] = []
                     while not self.check(TT.RPAREN, TT.EOF):
                         args.append(self.parse_expr())
-                        if not self.match_tok(TT.COMMA): break
+                        if not self.match_tok(TT.COMMA):
+                            break
                     rp = self.peek()
                     self.expect(TT.RPAREN)
                     n = MethodCall(expr, name, args)
@@ -801,7 +1225,8 @@ class Parser:
                 args = []
                 while not self.check(TT.RPAREN, TT.EOF):
                     args.append(self.parse_expr())
-                    if not self.match_tok(TT.COMMA): break
+                    if not self.match_tok(TT.COMMA):
+                        break
                 rp = self.peek()
                 self.expect(TT.RPAREN)
                 n = FnCall(expr, args)
@@ -813,10 +1238,16 @@ class Parser:
                 if self.check(TT.COLON):
                     # slice without start: [:end:step]
                     self.advance()
-                    end = self.parse_expr() if not self.check(TT.COLON, TT.RBRACKET) else None
+                    end = (
+                        self.parse_expr()
+                        if not self.check(TT.COLON, TT.RBRACKET)
+                        else None
+                    )
                     step = None
                     if self.match_tok(TT.COLON):
-                        step = self.parse_expr() if not self.check(TT.RBRACKET) else None
+                        step = (
+                            self.parse_expr() if not self.check(TT.RBRACKET) else None
+                        )
                     rb = self.peek()
                     self.expect(TT.RBRACKET)
                     n = Index(expr, SliceLit(None, end, step))
@@ -826,10 +1257,18 @@ class Parser:
                     idx = self.parse_expr()
                     if self.match_tok(TT.COLON):
                         # slice with start: [start:end:step]
-                        end = self.parse_expr() if not self.check(TT.COLON, TT.RBRACKET) else None
+                        end = (
+                            self.parse_expr()
+                            if not self.check(TT.COLON, TT.RBRACKET)
+                            else None
+                        )
                         step = None
                         if self.match_tok(TT.COLON):
-                            step = self.parse_expr() if not self.check(TT.RBRACKET) else None
+                            step = (
+                                self.parse_expr()
+                                if not self.check(TT.RBRACKET)
+                                else None
+                            )
                         rb = self.peek()
                         self.expect(TT.RBRACKET)
                         n = Index(expr, SliceLit(idx, end, step))
@@ -842,7 +1281,13 @@ class Parser:
                         self._set_span_range(n, lb, rb)
                         expr = n
             elif self.check(TT.QUESTION):
-                q = self.peek(); self.advance()
+                # If a top-level ':' follows, this is a C-style ternary
+                # (cond ? a : b) — leave it for parse_expr, which binds at
+                # lower precedence than comparisons. Otherwise: TryOp unwrap.
+                if self._is_c_ternary():
+                    break
+                q = self.peek()
+                self.advance()
                 n = TryOp(expr)
                 self._set_span_range(n, q, q)
                 expr = n
@@ -852,47 +1297,97 @@ class Parser:
 
     def parse_primary(self):
         t = self.peek()
-        if t.type == TT.INT_LIT:   n = IntLit(int(t.value)); self.advance(); self._set_span(n, t); return n
-        if t.type == TT.FLOAT_LIT: n = FloatLit(float(t.value)); self.advance(); self._set_span(n, t); return n
-        if t.type == TT.STR_LIT:   n = StrLit(t.value); self.advance(); self._set_span(n, t); return n
-        if t.type == TT.TRUE:      n = BoolLit(True); self.advance(); self._set_span(n, t); return n
-        if t.type == TT.FALSE:     n = BoolLit(False); self.advance(); self._set_span(n, t); return n
-        if t.type == TT.KL_NONE:   n = NoneLit(); self.advance(); self._set_span(n, t); return n
+        if t.type == TT.INT_LIT:
+            n = IntLit(int(t.value))
+            self.advance()
+            self._set_span(n, t)
+            return n
+        if t.type == TT.FLOAT_LIT:
+            n = FloatLit(float(t.value))
+            self.advance()
+            self._set_span(n, t)
+            return n
+        if t.type == TT.STR_LIT:
+            n = StrLit(t.value)
+            self.advance()
+            self._set_span(n, t)
+            return n
+        if t.type == TT.TRUE:
+            n = BoolLit(True)
+            self.advance()
+            self._set_span(n, t)
+            return n
+        if t.type == TT.FALSE:
+            n = BoolLit(False)
+            self.advance()
+            self._set_span(n, t)
+            return n
+        if t.type == TT.KL_NONE:
+            n = NoneLit()
+            self.advance()
+            self._set_span(n, t)
+            return n
         if t.type == TT.SOME:
             st = t
-            self.advance(); self.expect(TT.LPAREN)
-            v = self.parse_expr(); et = self.peek(); self.expect(TT.RPAREN)
-            n = SomeLit(v); self._set_span_range(n, st, et); return n
-        if t.type == TT.UNDERSCORE: n = WildCard(); self.advance(); self._set_span(n, t); return n
+            self.advance()
+            self.expect(TT.LPAREN)
+            v = self.parse_expr()
+            et = self.peek()
+            self.expect(TT.RPAREN)
+            n = SomeLit(v)
+            self._set_span_range(n, st, et)
+            return n
+        if t.type == TT.UNDERSCORE:
+            n = WildCard()
+            self.advance()
+            self._set_span(n, t)
+            return n
         if t.type == TT.LBRACKET:
-            st = t; self.advance(); elems: PyList[Any] = []
+            st = t
+            self.advance()
+            elems: PyList[Any] = []
             while not self.check(TT.RBRACKET, TT.EOF):
                 elems.append(self.parse_expr())
-                if not self.match_tok(TT.COMMA): break
-            et = self.peek(); self.expect(TT.RBRACKET)
-            n = ListLit(elems); self._set_span_range(n, st, et); return n
+                if not self.match_tok(TT.COMMA):
+                    break
+            et = self.peek()
+            self.expect(TT.RBRACKET)
+            n = ListLit(elems)
+            self._set_span_range(n, st, et)
+            return n
         if t.type == TT.LPAREN:
-            st = t; self.advance()
+            st = t
+            self.advance()
             if self.check(TT.RPAREN):
-                et = self.peek(); self.expect(TT.RPAREN)
-                n = TupleLit([]); self._set_span_range(n, st, et); return n
+                et = self.peek()
+                self.expect(TT.RPAREN)
+                n = TupleLit([])
+                self._set_span_range(n, st, et)
+                return n
             expr = self.parse_expr()
             if self.match_tok(TT.COMMA):
                 elems = [expr]
                 while not self.check(TT.RPAREN, TT.EOF):
                     elems.append(self.parse_expr())
-                    if not self.match_tok(TT.COMMA): break
-                et = self.peek(); self.expect(TT.RPAREN)
-                n = TupleLit(elems); self._set_span_range(n, st, et); return n
-            et = self.peek(); self.expect(TT.RPAREN)
+                    if not self.match_tok(TT.COMMA):
+                        break
+                et = self.peek()
+                self.expect(TT.RPAREN)
+                n = TupleLit(elems)
+                self._set_span_range(n, st, et)
+                return n
+            et = self.peek()
+            self.expect(TT.RPAREN)
             self._set_span(expr, st)
             return expr
         if t.type == TT.PIPE:
-            st = t; self.advance()
+            st = t
+            self.advance()
             params = []
             while not self.check(TT.PIPE, TT.EOF):
                 params.append(self.expect(TT.IDENT).value)
-                if not self.match_tok(TT.COMMA): break
+                if not self.match_tok(TT.COMMA):
+                    break
             self.expect(TT.PIPE)
             body = self.parse_expr()
             n = LambdaExpr(params, body)
@@ -907,55 +1402,80 @@ class Parser:
                 saved = self.pos
                 self.advance()
                 next_t = self.peek()
-                type_kw_set = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID}
-                if (next_t.type == TT.IDENT and next_t.value and next_t.value[0].isupper()) or next_t.type in type_kw_set:
+                type_kw_set = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID, TT.T_LONG}
+                if (
+                    next_t.type == TT.IDENT
+                    and next_t.value
+                    and next_t.value[0].isupper()
+                ) or next_t.type in type_kw_set:
                     args: PyList[str] = []
                     while not self.check(TT.GT):
                         args.append(self.parse_type())
-                        if not self.match_tok(TT.COMMA): break
+                        if not self.match_tok(TT.COMMA):
+                            break
                     self.expect(TT.GT)
                     type_name = f"{name}<{', '.join(args)}>"
                     # Generic struct literal: TypeName<T> { field: val, ... }
                     if self.check(TT.LBRACE):
-                        saved2 = self.pos; self.advance()
+                        saved2 = self.pos
+                        self.advance()
                         if self.check(TT.IDENT) and self.peek(1).type == TT.COLON:
-                            flds: PyList[Tuple[str,Any]] = []
+                            flds: PyList[Tuple[str, Any]] = []
                             while not self.check(TT.RBRACE, TT.EOF):
                                 fn_ = self.expect(TT.IDENT).value
                                 self.expect(TT.COLON)
                                 fv = self.parse_expr()
                                 flds.append((fn_, fv))
-                                if not self.match_tok(TT.COMMA): break
-                            et = self.peek(); self.expect(TT.RBRACE)
-                            n = StructLit(type_name, flds); self._set_span_range(n, t, et); return n
+                                if not self.match_tok(TT.COMMA):
+                                    break
+                            et = self.peek()
+                            self.expect(TT.RBRACE)
+                            n = StructLit(type_name, flds)
+                            self._set_span_range(n, t, et)
+                            return n
                         else:
                             self.pos = saved2
-                    n = Ident(type_name); self._set_span(n, t); return n
+                    n = Ident(type_name)
+                    self._set_span(n, t)
+                    return n
                 else:
                     self.pos = saved  # backtrack, treat as comparison
             # Struct literal: TypeName { field: val, ... }
             if self.check(TT.LBRACE):
-                saved = self.pos; self.advance()
+                saved = self.pos
+                self.advance()
                 if self.check(TT.IDENT) and self.peek(1).type == TT.COLON:
-                    flds: PyList[Tuple[str,Any]] = []
+                    flds: PyList[Tuple[str, Any]] = []
                     while not self.check(TT.RBRACE, TT.EOF):
                         fn_ = self.expect(TT.IDENT).value
                         self.expect(TT.COLON)
                         fv = self.parse_expr()
                         flds.append((fn_, fv))
-                        if not self.match_tok(TT.COMMA): break
-                    et = self.peek(); self.expect(TT.RBRACE)
-                    n = StructLit(name, flds); self._set_span_range(n, t, et); return n
+                        if not self.match_tok(TT.COMMA):
+                            break
+                    et = self.peek()
+                    self.expect(TT.RBRACE)
+                    n = StructLit(name, flds)
+                    self._set_span_range(n, t, et)
+                    return n
                 else:
                     self.pos = saved  # backtrack
-            n = Ident(name); self._set_span(n, t); return n
+            n = Ident(name)
+            self._set_span(n, t)
+            return n
 
         # Allow type keywords as identifiers in some contexts
-        type_kws = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID}
+        type_kws = {TT.T_INT, TT.T_FLOAT, TT.T_BOOL, TT.T_STR, TT.T_VOID, TT.T_LONG}
         if t.type in type_kws:
-            n = Ident(t.value); self.advance(); self._set_span(n, t); return n
+            n = Ident(t.value)
+            self.advance()
+            self._set_span(n, t)
+            return n
 
-        raise ParseError(f"Unexpected token {t.type.name} ({t.value!r}) in expression", t.line, t.col)
+        raise ParseError(
+            f"Unexpected token {t.type.name} ({t.value!r}) in expression", t.line, t.col
+        )
+
 
 # ═══════════════════════════════════════════════════════════════
 #  C++ RUNTIME HEADER
@@ -967,6 +1487,7 @@ RUNTIME = r"""// ── Generated by Oxybelis ───────────�
 #include <vector>
 #include <optional>
 #include <unordered_map>
+#include <memory>
 #include <functional>
 #include <algorithm>
 #include <cmath>
@@ -978,6 +1499,7 @@ RUNTIME = r"""// ── Generated by Oxybelis ───────────�
 #include <random>
 #include <regex>
 #include <chrono>
+#include <thread>
 #include <cctype>
 #include <filesystem>
 #include <type_traits>
@@ -1008,6 +1530,16 @@ RUNTIME = r"""// ── Generated by Oxybelis ───────────�
 #include <NumCpp/Linalg.hpp>
 #ifdef _WIN32
 #include <windows.h>
+#include <winhttp.h>
+#include <direct.h>
+#pragma comment(lib, "winhttp.lib")
+#endif
+
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #endif
 
 // ── Oxybelis stdlib types ────────────────────────────────────────────────────
@@ -1316,6 +1848,168 @@ inline JsonValue json_parse(const std::string& s) { return _json_parse(s); }
 inline std::string json_serialize(const JsonValue& v) { return _json_serialize(v); }
 inline std::string json_pretty(const JsonValue& v, const std::string& indent) { return _json_pretty(v, indent, 0); }
 
+// ── HTTP client ─────────────────────────────────────────────────────────
+inline std::string _ox_http_headers_to_json(const std::unordered_map<std::string, std::string>& headers) {
+    std::string r = "{"; bool f = true;
+    for (const auto& [k, v] : headers) { if (!f) r += ","; f = false; r += "\"" + _json_escape(k) + "\":\"" + _json_escape(v) + "\""; }
+    r += "}"; return r;
+}
+
+#ifdef _WIN32
+inline std::string _ox_http_request(const std::string& method, const std::string& url,
+                                     const std::string& headers_json, const std::string& body, int timeout) {
+    // Parse URL manually (simpler than WinHttpCrackUrl buffer management)
+    std::string scheme, host, path;
+    auto pos = url.find("://");
+    if (pos == std::string::npos) return "{\"ok\":false,\"error\":\"Invalid URL\"}";
+    scheme = url.substr(0, pos);
+    auto hs = pos + 3, he = url.find('/', hs);
+    if (he == std::string::npos) { host = url.substr(hs); path = "/"; }
+    else { host = url.substr(hs, he - hs); path = url.substr(he); }
+    if (path.empty()) path = "/";
+    int port = (scheme == "https") ? 443 : 80;
+    auto col = host.find(':');
+    if (col != std::string::npos) { port = std::stoi(host.substr(col + 1)); host = host.substr(0, col); }
+    bool https = (scheme == "https");
+    auto whost = std::wstring(host.begin(), host.end());
+    auto wpath = std::wstring(path.begin(), path.end());
+    auto hSession = WinHttpOpen(L"Oxybelis/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
+    if (!hSession) return "{\"ok\":false,\"error\":\"WinHttpOpen failed\"}";
+    auto hConnect = WinHttpConnect(hSession, whost.c_str(), port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return "{\"ok\":false,\"error\":\"WinHttpConnect failed\"}"; }
+    auto wmethod = std::wstring(method.begin(), method.end());
+    auto hRequest = WinHttpOpenRequest(hConnect, wmethod.c_str(), wpath.c_str(), NULL, NULL, NULL, https ? WINHTTP_FLAG_SECURE : 0);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return "{\"ok\":false,\"error\":\"WinHttpOpenRequest failed\"}"; }
+    DWORD to = timeout * 1000;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &to, sizeof(to));
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_SEND_TIMEOUT, &to, sizeof(to));
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &to, sizeof(to));
+    BOOL sent = WinHttpSendRequest(hRequest, NULL, 0, (LPVOID)body.c_str(), (DWORD)body.size(), (DWORD)body.size(), 0);
+    if (!sent) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return "{\"ok\":false,\"error\":\"WinHttpSendRequest failed\"}"; }
+    if (!WinHttpReceiveResponse(hRequest, NULL)) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return "{\"ok\":false,\"error\":\"WinHttpReceiveResponse failed\"}"; }
+    DWORD sc = 0, sz = sizeof(sc);
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &sc, &sz, NULL);
+    std::wstring stw; sz = 0;
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_TEXT, WINHTTP_HEADER_NAME_BY_INDEX, NULL, &sz, NULL);
+    if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) { stw.resize(sz / 2); WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_TEXT, WINHTTP_HEADER_NAME_BY_INDEX, &stw[0], &sz, NULL); }
+    std::string st(stw.begin(), stw.end());
+    // Read body
+    std::string resp_body; char buf[4096]; DWORD br;
+    while (WinHttpReadData(hRequest, buf, sizeof(buf), &br) && br > 0) resp_body.append(buf, br);
+    // Build headers JSON for response
+    std::unordered_map<std::string, std::string> rh;
+    std::wstring rhw; sz = 0;
+    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, NULL, &sz, NULL);
+    if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) { rhw.resize(sz / 2); WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX, &rhw[0], &sz, NULL); }
+    std::wstringstream wss(rhw); std::wstring ln; bool fl = true;
+    while (std::getline(wss, ln, L'\n')) {
+        if (fl) { fl = false; continue; }
+        if (ln.empty() || ln == L"\r") continue;
+        auto col = ln.find(L':');
+        if (col != std::wstring::npos) {
+            auto kpart = ln.substr(0, col);
+            auto vpart = ln.substr(col + 1);
+            auto key = std::string(kpart.begin(), kpart.end());
+            auto val = std::string(vpart.begin(), vpart.end());
+            if (!val.empty() && val[0] == ' ') val = val.substr(1);
+            if (!val.empty() && val.back() == '\r') val.pop_back();
+            rh[key] = val;
+        }
+    }
+    WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession);
+    std::string hjs = "{"; bool ff = true;
+    for (const auto& [k, v] : rh) { if (!ff) hjs += ","; ff = false; hjs += "\"" + _json_escape(k) + "\":\"" + _json_escape(v) + "\""; }
+    hjs += "}";
+    return "{\"ok\":true,\"status\":" + std::to_string(sc) + ",\"status_text\":\"" + _json_escape(st) + "\",\"body\":\"" + _json_escape(resp_body) + "\",\"headers\":\"" + _json_escape(hjs) + "\"}";
+}
+#else
+inline std::string _ox_http_request(const std::string& method, const std::string& url,
+                                     const std::string& headers_json, const std::string& body, int timeout) {
+    // Parse URL
+    std::string scheme, host, path;
+    auto pos = url.find("://");
+    if (pos == std::string::npos) return "{\"ok\":false,\"error\":\"Invalid URL\"}";
+    scheme = url.substr(0, pos);
+    auto hs = pos + 3, he = url.find('/', hs);
+    if (he == std::string::npos) { host = url.substr(hs); path = "/"; }
+    else { host = url.substr(hs, he - hs); path = url.substr(he); }
+    if (path.empty()) path = "/";
+    int port = (scheme == "https") ? 443 : 80;
+    auto col = host.find(':');
+    if (col != std::string::npos) { port = std::stoi(host.substr(col + 1)); host = host.substr(0, col); }
+    if (scheme == "https") return "{\"ok\":false,\"error\":\"HTTPS not yet supported on this platform\"}";
+    // DNS & connect
+    struct addrinfo hints = {}, *addrs;
+    hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM;
+    auto ps = std::to_string(port);
+    if (getaddrinfo(host.c_str(), ps.c_str(), &hints, &addrs)) return "{\"ok\":false,\"error\":\"DNS resolution failed\"}";
+    int sock = -1;
+    for (auto* a = addrs; a; a = a->ai_next) {
+        sock = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        if (sock < 0) continue;
+        struct timeval tv; tv.tv_sec = timeout; tv.tv_usec = 0;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        if (!connect(sock, a->ai_addr, a->ai_addrlen)) break;
+        close(sock); sock = -1;
+    }
+    freeaddrinfo(addrs);
+    if (sock < 0) return "{\"ok\":false,\"error\":\"Failed to connect\"}";
+    // Build request
+    std::string req = method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: Oxybelis/1.0\r\nConnection: close\r\n";
+    if (!body.empty()) req += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    // Parse custom headers from JSON
+    if (headers_json != "{}") {
+        size_t hp = 1;
+        while (hp < headers_json.size() - 1) {
+            auto ks = headers_json.find('"', hp); if (ks == std::string::npos) break; ks++;
+            auto ke = headers_json.find('"', ks); if (ke == std::string::npos) break;
+            std::string k = headers_json.substr(ks, ke - ks);
+            auto vs = headers_json.find('"', ke + 1); if (vs == std::string::npos) break; vs++;
+            auto ve = headers_json.find('"', vs); if (ve == std::string::npos) break;
+            req += k + ": " + headers_json.substr(vs, ve - vs) + "\r\n";
+            hp = ve + 1;
+        }
+    }
+    req += "\r\n" + body;
+    if (send(sock, req.c_str(), req.size(), 0) < 0) { close(sock); return "{\"ok\":false,\"error\":\"Failed to send\"}"; }
+    std::string resp; char buf[8192]; int n;
+    while ((n = (int)recv(sock, buf, sizeof(buf) - 1, 0)) > 0) { buf[n] = 0; resp += buf; }
+    close(sock);
+    if (resp.empty()) return "{\"ok\":false,\"error\":\"Empty response\"}";
+    // Parse response
+    auto sle = resp.find("\r\n");
+    if (sle == std::string::npos) return "{\"ok\":false,\"error\":\"Malformed response\"}";
+    std::string sl = resp.substr(0, sle);
+    int sc = 0; std::string stext;
+    auto cs = sl.find(' ');
+    if (cs != std::string::npos) { auto ce = sl.find(' ', cs + 1); if (ce != std::string::npos) { sc = std::stoi(sl.substr(cs + 1, ce - cs - 1)); stext = sl.substr(ce + 1); } }
+    auto hdre = resp.find("\r\n\r\n");
+    std::unordered_map<std::string, std::string> rh;
+    if (hdre != std::string::npos) {
+        auto hsect = resp.substr(sle + 2, hdre - sle - 2); size_t p = 0;
+        while (p < hsect.size()) { auto le = hsect.find("\r\n", p); if (le == std::string::npos) break;
+            auto l = hsect.substr(p, le - p); auto c = l.find(':'); if (c != std::string::npos) {
+                auto k = l.substr(0, c), v = l.substr(c + 1); if (!v.empty() && v[0] == ' ') v = v.substr(1); rh[k] = v;
+            } p = le + 2; }
+    }
+    std::string resp_body = (hdre != std::string::npos) ? resp.substr(hdre + 4) : "";
+    // Handle chunked
+    auto it = rh.find("Transfer-Encoding");
+    if (it != rh.end() && it->second.find("chunked") != std::string::npos) {
+        std::string u; size_t p = 0;
+        while (p < resp_body.size()) { auto ce2 = resp_body.find("\r\n", p); if (ce2 == std::string::npos) break;
+            auto css = resp_body.substr(p, ce2 - p); auto csz = std::stoul(css, nullptr, 16); if (csz == 0) break;
+            u += resp_body.substr(ce2 + 2, csz); p = ce2 + 2 + csz + 2; }
+        resp_body = u;
+    }
+    std::string hjs = "{"; bool ff = true;
+    for (const auto& [k, v] : rh) { if (!ff) hjs += ","; ff = false; hjs += "\"" + _json_escape(k) + "\":\"" + _json_escape(v) + "\""; }
+    hjs += "}";
+    return "{\"ok\":true,\"status\":" + std::to_string(sc) + ",\"status_text\":\"" + _json_escape(stext) + "\",\"body\":\"" + _json_escape(resp_body) + "\",\"headers\":\"" + _json_escape(hjs) + "\"}";
+}
+#endif
+
 // ── Result<T,E> ────────────────────────────────────────────────────────────
 template<typename T, typename E>
 struct Result {
@@ -1474,6 +2168,10 @@ template<typename T>
 bool contains(const std::vector<T>& v, const T& x){
     return std::find(v.begin(),v.end(),x)!=v.end();
 }
+template<typename K, typename V>
+bool contains(const std::unordered_map<K,V>& m, const K& k){
+    return m.find(k) != m.end();
+}
 
 // ── range ─────────────────────────────────────────────────────────────────
 inline std::vector<int> range(int n){
@@ -1483,6 +2181,48 @@ inline std::vector<int> range(int n){
 inline std::vector<int> range(int a,int b){
     std::vector<int> r; r.reserve(b-a>0?b-a:0);
     for(int i=a;i<b;i++) r.push_back(i); return r;
+}
+inline std::vector<int> range(int a,int b,int step){
+    std::vector<int> r;
+    if(step>0){ for(int i=a;i<b;i+=step) r.push_back(i); }
+    else if(step<0){ for(int i=a;i>b;i+=step) r.push_back(i); }
+    return r;
+}
+
+inline std::string chr(int c){ return std::string(1,char(c)); }
+inline int ord(const std::string& s){ return s.empty()?-1:int(s[0]); }
+
+template<typename T>
+std::vector<T> _ox_repeat(const std::vector<T>& v, int n){
+    std::vector<T> r; r.reserve(v.size()*n);
+    for(int i=0;i<n;i++) for(const auto& x:v) r.push_back(x);
+    return r;
+}
+
+template<typename T,typename U>
+std::vector<std::pair<T,U>> _ox_zip(const std::vector<T>& a, const std::vector<U>& b){
+    std::vector<std::pair<T,U>> r; size_t n = std::min(a.size(),b.size()); r.reserve(n);
+    for(size_t i=0;i<n;i++) r.push_back({a[i],b[i]});
+    return r;
+}
+
+template<typename K,typename V>
+std::vector<K> map_keys(const std::unordered_map<K,V>& m){
+    std::vector<K> r; r.reserve(m.size());
+    for(const auto& [k,_]:m) r.push_back(k);
+    return r;
+}
+template<typename K,typename V>
+std::vector<V> map_values(const std::unordered_map<K,V>& m){
+    std::vector<V> r; r.reserve(m.size());
+    for(const auto& [_,v]:m) r.push_back(v);
+    return r;
+}
+template<typename K,typename V>
+std::vector<std::pair<K,V>> map_items(const std::unordered_map<K,V>& m){
+    std::vector<std::pair<K,V>> r; r.reserve(m.size());
+    for(const auto& [k,v]:m) r.push_back({k,v});
+    return r;
 }
 
 inline int    to_int(const std::string& s)   { return std::stoi(s); }
@@ -1504,6 +2244,34 @@ inline int max(int a,int b){return a>b?a:b;}
 inline int min(int a,int b){return a<b?a:b;}
 inline double maxf(double a,double b){return a>b?a:b;}
 inline double minf(double a,double b){return a<b?a:b;}
+
+// unique-name aliases so oxlib modules (which may define fns with the same
+// names, e.g. math.sqrt) can still reach the C++ math library
+inline double _ox_fsqrt(double x){return std::sqrt(x);}
+inline double _ox_fpow(double x,double y){return std::pow(x,y);}
+inline double _ox_fexp(double x){return std::exp(x);}
+inline double _ox_flog(double x){return std::log(x);}
+inline double _ox_fsin(double x){return std::sin(x);}
+inline double _ox_fcos(double x){return std::cos(x);}
+inline double _ox_ftan(double x){return std::tan(x);}
+inline double _ox_fasin(double x){return std::asin(x);}
+inline double _ox_facos(double x){return std::acos(x);}
+inline double _ox_fatan(double x){return std::atan(x);}
+inline double _ox_fatan2(double y,double x){return std::atan2(y,x);}
+inline double _ox_fsinh(double x){return std::sinh(x);}
+inline double _ox_fcosh(double x){return std::cosh(x);}
+inline double _ox_ftanh(double x){return std::tanh(x);}
+inline double _ox_fasinh(double x){return std::asinh(x);}
+inline double _ox_facosh(double x){return std::acosh(x);}
+inline double _ox_fatanh(double x){return std::atanh(x);}
+inline double _ox_ffloor(double x){return std::floor(x);}
+inline double _ox_fceil(double x){return std::ceil(x);}
+inline double _ox_fround(double x){return std::round(x);}
+inline double _ox_fabs(double x){return std::abs(x);}
+inline double _ox_ferf(double x){return std::erf(x);}
+inline double _ox_ferfc(double x){return std::erfc(x);}
+inline double _ox_fgamma(double x){return std::tgamma(x);}
+inline double _ox_flgamma(double x){return std::lgamma(x);}
 
 // ── string helpers ──────────────────────────────────────────────────────────
 inline std::string str_get(const std::string& s, int i) {
@@ -1727,11 +2495,115 @@ static std::mt19937 _ox_rng(std::random_device{}());
 inline int _ox_randint(int min, int max) {
     std::uniform_int_distribution<int> dist(min, max); return dist(_ox_rng);
 }
+inline int64_t _ox_randlong(int64_t min, int64_t max) {
+    std::uniform_int_distribution<int64_t> dist(min, max); return dist(_ox_rng);
+}
 inline double _ox_randfloat() {
     std::uniform_real_distribution<double> dist(0.0, 1.0); return dist(_ox_rng);
 }
 inline void _ox_randseed(unsigned int seed) { _ox_rng.seed(seed); }
 inline bool _ox_randbool() { return _ox_randint(0, 1) == 1; }
+inline std::string _ox_randbytes(int n) {
+    if (n < 0) n = 0;
+    std::uniform_int_distribution<int> dist(0, 255);
+    std::string s; s.reserve((size_t)n);
+    for (int i = 0; i < n; i++) s.push_back((char)dist(_ox_rng));
+    return s;
+}
+
+// ── os / time / subprocess helpers ──────────────────────────────────────
+static std::string _ox_getenv(const std::string& name) {
+    const char* v = std::getenv(name.c_str());
+    return v ? std::string(v) : "";
+}
+static bool _ox_setenv(const std::string& name, const std::string& value) {
+#ifdef _WIN32
+    return _putenv_s(name.c_str(), value.c_str()) == 0;
+#else
+    return setenv(name.c_str(), value.c_str(), 1) == 0;
+#endif
+}
+static bool _ox_chdir(const std::string& path) {
+#ifdef _WIN32
+    return _chdir(path.c_str()) == 0;
+#else
+    return chdir(path.c_str()) == 0;
+#endif
+}
+static std::string _ox_platform() {
+#if defined(_WIN32)
+    return "win32";
+#elif defined(__APPLE__)
+    return "darwin";
+#else
+    return "linux";
+#endif
+}
+static std::string _ox_popen_out(const std::string& cmd) {
+    std::string result;
+#ifdef _WIN32
+    FILE* pipe = _popen(cmd.c_str(), "r");
+#else
+    FILE* pipe = popen(cmd.c_str(), "r");
+#endif
+    if (!pipe) return result;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), pipe)) > 0) result.append(buf, n);
+#ifdef _WIN32
+    _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
+    return result;
+}
+static std::vector<std::string> _ox_walk(const std::string& path) {
+    std::vector<std::string> out;
+    try {
+        std::filesystem::recursive_directory_iterator it(
+            path, std::filesystem::directory_options::skip_permission_denied), end;
+        for (; it != end; ++it)
+            if (it->is_regular_file()) out.push_back(it->path().string());
+    } catch (...) {}
+    return out;
+}
+static double _ox_time_epoch() {
+    return std::chrono::duration<double>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+static std::vector<int> _ox_localtime() {
+    std::time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    return {(int)tm.tm_year + 1900, (int)tm.tm_mon + 1, (int)tm.tm_mday,
+            (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec,
+            (int)tm.tm_wday, (int)tm.tm_yday};
+}
+static std::vector<int> _ox_gmtime() {
+    std::time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &t);
+#else
+    gmtime_r(&t, &tm);
+#endif
+    return {(int)tm.tm_year + 1900, (int)tm.tm_mon + 1, (int)tm.tm_mday,
+            (int)tm.tm_hour, (int)tm.tm_min, (int)tm.tm_sec,
+            (int)tm.tm_wday, (int)tm.tm_yday};
+}
+static void _ox_sleep(double seconds) {
+    std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
+}
+static void _ox_exit(int code) { std::exit(code); }
+static double _ox_math_inf() { return std::numeric_limits<double>::infinity(); }
+static double _ox_math_nan() { return std::numeric_limits<double>::quiet_NaN(); }
+static bool _ox_math_isnan(double x) { return std::isnan(x); }
+static bool _ox_math_isinf(double x) { return std::isinf(x); }
+static bool _ox_math_isfinite(double x) { return std::isfinite(x); }
 
 // ── functional chaining (List<T>) ────────────────────────────────────────
 template<typename T, typename F>
@@ -2201,7 +3073,41 @@ inline int _ox_datetime_component(const std::string& dt, int which) {
     }
 }
 
+// ── timeit ──────────────────────────────────────────────────────────────────
+inline double _ox_perf_counter() {
+    return std::chrono::duration<double>(
+        std::chrono::high_resolution_clock::now().time_since_epoch()
+    ).count();
+}
+
+template<typename F>
+inline double _ox_timeit(F stmt, int number) {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < number; ++i) { stmt(); }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(t1 - t0).count();
+}
+
+template<typename S, typename T>
+inline double _ox_timeit_setup(S setup, T stmt, int number) {
+    setup();
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < number; ++i) { stmt(); }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(t1 - t0).count();
+}
+
 // ── regex ─────────────────────────────────────────────────────────────────
+struct _ox_Regex {
+    std::regex re;
+    _ox_Regex() = default;
+    explicit _ox_Regex(const std::string& pattern) : re(pattern) {}
+};
+
+inline _ox_Regex _ox_regex_compile(const std::string& pattern) {
+    return _ox_Regex(pattern);
+}
+
 inline bool _ox_regex_match(const std::string& pattern, const std::string& s) {
     try { return std::regex_match(s, std::regex(pattern)); }
     catch (...) { return false; }
@@ -2231,6 +3137,79 @@ inline std::vector<std::string> _ox_regex_find_all(const std::string& pattern, c
             r.push_back(it->str());
     } catch (...) {}
     return r;
+}
+
+inline std::vector<std::vector<std::string>> _ox_regex_groups(const std::string& pattern, const std::string& s) {
+    std::vector<std::vector<std::string>> r;
+    try {
+        std::regex re(pattern);
+        auto begin = std::sregex_iterator(s.begin(), s.end(), re);
+        auto end = std::sregex_iterator();
+        for (auto it = begin; it != end; ++it) {
+            std::vector<std::string> g;
+            for (size_t i = 0; i < it->size(); i++) g.push_back((*it)[i].str());
+            r.push_back(g);
+        }
+    } catch (...) {}
+    return r;
+}
+
+inline Generator<List<std::string>> _ox_regex_groups_iter(const std::string& pattern, std::string s) {
+    struct _ox_RegexIterState {
+        std::string str;
+        std::regex re;
+        std::sregex_iterator it, end;
+        bool ok = false;
+        _ox_RegexIterState(const std::string& p, std::string s) try
+            : str(std::move(s)), re(p), it(str.begin(), str.end(), re), end(), ok(true) {}
+        catch(...) { ok = false; }
+    };
+    auto state = std::make_shared<_ox_RegexIterState>(pattern, std::move(s));
+    return Generator<List<std::string>>([state]() -> std::optional<List<std::string>> {
+        if (!state->ok) return std::nullopt;
+        if (state->it == state->end) return std::nullopt;
+        List<std::string> g;
+        for (size_t i = 0; i < state->it->size(); i++)
+            g.push_back((*state->it)[i].str());
+        ++state->it;
+        return g;
+    });
+}
+
+inline std::vector<std::vector<std::string>> _ox_regex_groups_re(const _ox_Regex& re, const std::string& s) {
+    std::vector<std::vector<std::string>> r;
+    try {
+        auto begin = std::sregex_iterator(s.begin(), s.end(), re.re);
+        auto end = std::sregex_iterator();
+        for (auto it = begin; it != end; ++it) {
+            std::vector<std::string> g;
+            for (size_t i = 0; i < it->size(); i++) g.push_back((*it)[i].str());
+            r.push_back(g);
+        }
+    } catch (...) {}
+    return r;
+}
+
+inline Generator<List<std::string>> _ox_regex_groups_iter_re(const _ox_Regex& re, std::string s) {
+    struct _ox_RegexIterState {
+        std::string str;
+        std::regex re;
+        std::sregex_iterator it, end;
+        bool ok = false;
+        _ox_RegexIterState(std::string s, const std::regex& r) try
+            : str(std::move(s)), re(r), it(str.begin(), str.end(), re), end(), ok(true) {}
+        catch(...) { ok = false; }
+    };
+    auto state = std::make_shared<_ox_RegexIterState>(std::move(s), re.re);
+    return Generator<List<std::string>>([state]() -> std::optional<List<std::string>> {
+        if (!state->ok) return std::nullopt;
+        if (state->it == state->end) return std::nullopt;
+        List<std::string> g;
+        for (size_t i = 0; i < state->it->size(); i++)
+            g.push_back((*state->it)[i].str());
+        ++state->it;
+        return g;
+    });
 }
 
 inline std::string _ox_regex_replace(const std::string& pattern, const std::string& s, const std::string& replacement) {
@@ -2423,50 +3402,70 @@ auto _ox_sorted(const std::tuple<Ts...>& t) {
 #  TYPE MAPPING
 # ═══════════════════════════════════════════════════════════════
 
-_TYPE_MAP = {'int':'int','float':'double','bool':'bool','str':'std::string','void':'void'}
+_TYPE_MAP = {
+    "int": "int",
+    "float": "double",
+    "bool": "bool",
+    "str": "std::string",
+    "void": "void",
+    "long": "int64_t",
+    "Regex": "_ox_Regex",
+}
+
 
 def _split_args(s: str) -> PyList[str]:
-    args, cur, depth = [], '', 0
+    args, cur, depth = [], "", 0
     for c in s:
-        if c in '<([': depth+=1
-        elif c in '>)]': depth-=1
-        if c==',' and depth==0: args.append(cur.strip()); cur=''
-        else: cur+=c
-    if cur.strip(): args.append(cur.strip())
+        if c in "<([":
+            depth += 1
+        elif c in ">)]":
+            depth -= 1
+        if c == "," and depth == 0:
+            args.append(cur.strip())
+            cur = ""
+        else:
+            cur += c
+    if cur.strip():
+        args.append(cur.strip())
     return args
 
+
 def map_type(t: str) -> str:
-    if t in _TYPE_MAP: return _TYPE_MAP[t]
-    if t.startswith('('):
+    if t in _TYPE_MAP:
+        return _TYPE_MAP[t]
+    if t.startswith("("):
         inner = t[1:-1]
-        mapped = ', '.join(map_type(a) for a in _split_args(inner))
+        mapped = ", ".join(map_type(a) for a in _split_args(inner))
         return f"std::tuple<{mapped}>"
-    if '<' in t:
-        outer = t[:t.index('<')]
-        inner = t[t.index('<')+1:t.rindex('>')]
-        mapped = ', '.join(map_type(a) for a in _split_args(inner))
+    if "<" in t:
+        outer = t[: t.index("<")]
+        inner = t[t.index("<") + 1 : t.rindex(">")]
+        mapped = ", ".join(map_type(a) for a in _split_args(inner))
         return f"{outer}<{mapped}>"
     return t  # user-defined type
+
 
 # ═══════════════════════════════════════════════════════════════
 #  MODULE RESOLVER
 # ═══════════════════════════════════════════════════════════════
 
+
 class ModuleResolver:
     """Resolves `import foo.bar` to file contents and path."""
-    def __init__(self, source_path: str = ''):
+
+    def __init__(self, source_path: str = ""):
         self._cache: dict = {}
         self._resolving: set = set()
         self._search_paths = self._default_paths(source_path)
 
     def _default_paths(self, source_path):
-        paths = ['.']
+        paths = ["."]
         if source_path:
             dirname = os.path.dirname(os.path.abspath(source_path))
             if dirname:
                 paths.insert(0, dirname)
         compiler_dir = os.path.dirname(os.path.abspath(__file__))
-        oxlib = os.path.join(compiler_dir, 'oxlib')
+        oxlib = os.path.join(compiler_dir, "oxlib")
         if os.path.isdir(oxlib):
             paths.append(oxlib)
         return paths
@@ -2476,25 +3475,27 @@ class ModuleResolver:
             self._search_paths.insert(0, p)
 
     def resolve(self, module_path):
-        mod_name = '.'.join(module_path)
+        mod_name = ".".join(module_path)
         if mod_name in self._cache:
             return self._cache[mod_name]
         if mod_name in self._resolving:
             raise ImportError(f"circular import detected: `{mod_name}`")
         self._resolving.add(mod_name)
         for base in self._search_paths:
-            filepath = os.path.join(base, *module_path) + '.ox'
+            filepath = os.path.join(base, *module_path) + ".ox"
             if os.path.isfile(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, "r", encoding="utf-8") as f:
                     src = f.read()
                 result = (src, filepath)
                 self._cache[mod_name] = result
                 return result
         raise ImportError(f"cannot find module `{mod_name}`")
 
+
 # ═══════════════════════════════════════════════════════════════
 #  CODE GENERATOR
 # ═══════════════════════════════════════════════════════════════
+
 
 class GenTranspiler:
     """Transforms a generator function into a state-machine struct + wrapper.
@@ -2529,14 +3530,14 @@ class GenTranspiler:
             if isinstance(s, YieldStmt):
                 return True
             if isinstance(s, (IfStmt, WhileStmt, ForStmt)):
-                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                body = getattr(s, "body", getattr(s, "then_body", []))
                 if self._any_yield(body if isinstance(body, list) else [body]):
                     return True
-                if hasattr(s, 'elif_clauses'):
+                if hasattr(s, "elif_clauses"):
                     for _, eb in s.elif_clauses:
                         if self._any_yield(eb):
                             return True
-                if hasattr(s, 'else_body') and s.else_body:
+                if hasattr(s, "else_body") and s.else_body:
                     if self._any_yield(s.else_body):
                         return True
         return False
@@ -2554,18 +3555,25 @@ class GenTranspiler:
 
     @staticmethod
     def _infer_type_from(expr) -> str:
-        if isinstance(expr, IntLit): return 'int'
-        if isinstance(expr, FloatLit): return 'double'
-        if isinstance(expr, BoolLit): return 'bool'
-        if isinstance(expr, StrLit): return 'std::string'
-        if isinstance(expr, UnaryOp): return GenTranspiler._infer_type_from(expr.operand)
+        if isinstance(expr, IntLit):
+            return "int"
+        if isinstance(expr, FloatLit):
+            return "double"
+        if isinstance(expr, BoolLit):
+            return "bool"
+        if isinstance(expr, StrLit):
+            return "std::string"
+        if isinstance(expr, UnaryOp):
+            return GenTranspiler._infer_type_from(expr.operand)
         if isinstance(expr, BinOp):
             lt = GenTranspiler._infer_type_from(expr.left)
             rt = GenTranspiler._infer_type_from(expr.right)
-            if lt == 'double' or rt == 'double': return 'double'
-            if lt == 'int' or rt == 'int': return 'int'
+            if lt == "double" or rt == "double":
+                return "double"
+            if lt == "int" or rt == "int":
+                return "int"
             return lt or rt
-        return 'int'
+        return "int"
 
     def _find_members(self, stmts):
         for s in stmts:
@@ -2576,20 +3584,20 @@ class GenTranspiler:
                 else:
                     self._member_types[s.name] = self._infer_type_from(s.value)
             elif isinstance(s, (IfStmt, WhileStmt, ForStmt)):
-                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                body = getattr(s, "body", getattr(s, "then_body", []))
                 if body:
                     self._find_members(body if isinstance(body, list) else [body])
-                if hasattr(s, 'elif_clauses'):
+                if hasattr(s, "elif_clauses"):
                     for _, eb in s.elif_clauses:
                         self._find_members(eb)
-                if hasattr(s, 'else_body') and s.else_body:
+                if hasattr(s, "else_body") and s.else_body:
                     self._find_members(s.else_body)
 
     def _get_inner_type(self) -> str:
         rt = self.fn.return_type
-        if rt.startswith('Generator<'):
-            return rt[len('Generator<'):-1]
-        return 'void'
+        if rt.startswith("Generator<"):
+            return rt[len("Generator<") : -1]
+        return "void"
 
     def _emit_struct(self) -> str:
         sn = f"_gen_{self.fn.name}"
@@ -2604,8 +3612,8 @@ class GenTranspiler:
             if not any(p[0] == vname for p in self.fn.params):
                 lines.append(f"    {self._member_types[vname]} {vname};")
         # Constructor
-        cons = ', '.join(f"{map_type(pt)} {pn}" for pn, pt, *_ in self.fn.params)
-        init = ', '.join(f"{pn}({pn})" for pn, _, *_ in self.fn.params)
+        cons = ", ".join(f"{map_type(pt)} {pn}" for pn, pt, *_ in self.fn.params)
+        init = ", ".join(f"{pn}({pn})" for pn, _, *_ in self.fn.params)
         lines.append(f"    {sn}({cons}) : {init} {{}}")
         # _next method
         lines.append(f"    Option<{map_type(inner)}> _next() {{")
@@ -2617,7 +3625,7 @@ class GenTranspiler:
         lines.append(f"        }}")
         lines.append(f"    }}")
         lines.append(f"}};")
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def _emit_wrapper(self) -> str:
         sn = f"_gen_{self.fn.name}"
@@ -2629,8 +3637,8 @@ class GenTranspiler:
             if dflt is not None:
                 p += f" = {self.cg.expr(dflt)}"
             parts.append(p)
-        params = ', '.join(parts)
-        args = ', '.join(pn for pn, _, *_ in self.fn.params)
+        params = ", ".join(parts)
+        args = ", ".join(pn for pn, _, *_ in self.fn.params)
         return f"{ret} {self.fn.name}({params}) {{\n    auto gen = {sn}({args});\n    return {ret}([gen]() mutable -> Option<{map_type(inner)}> {{ return gen._next(); }});\n}}"
 
     def _gen_body(self, stmts):
@@ -2651,7 +3659,9 @@ class GenTranspiler:
                 # Variable is already a struct member, just assign
                 self._emit(f"{stmt.name} = {val};")
             elif isinstance(stmt, Assignment):
-                self._emit(f"{self.cg.expr(stmt.target)} {stmt.op} {self.cg.expr(stmt.value)};")
+                self._emit(
+                    f"{self.cg.expr(stmt.target)} {stmt.op} {self.cg.expr(stmt.value)};"
+                )
             elif isinstance(stmt, ExprStmt):
                 self._emit(f"{self.cg.expr(stmt.expr)};")
             elif isinstance(stmt, ReturnStmt):
@@ -2712,7 +3722,7 @@ class GenTranspiler:
         for i, (br_cond, br_body) in enumerate(all_branches):
             branch_state = self._state()
             if i < len(all_branches) - 1:
-                next_cond = all_branches[i+1][0]
+                next_cond = all_branches[i + 1][0]
                 if br_cond is not None:
                     cond_str = self.cg.expr(br_cond)
                     self._emit(f"if ({cond_str}) {{ _state = {branch_state}; break; }}")
@@ -2725,7 +3735,9 @@ class GenTranspiler:
                 # Last branch (may be else)
                 if br_cond is not None:
                     cond_str = self.cg.expr(br_cond)
-                    self._emit(f"if ({cond_str}) {{ _state = {branch_state}; break; }} else {{ _state = {after_s}; break; }}")
+                    self._emit(
+                        f"if ({cond_str}) {{ _state = {branch_state}; break; }} else {{ _state = {after_s}; break; }}"
+                    )
                     self._case(branch_state)
                 self._gen_body(br_body)
                 self._emit(f"_state = {after_s}; break;")
@@ -2748,7 +3760,9 @@ class GenTranspiler:
                 self._emit(f"{s.var}++; _state = {check}; break;")
                 self._case(exit_s)
             else:
-                self._emit(f"for (int {s.var} = {start}; {s.var} < {end}; ++{s.var}) {{")
+                self._emit(
+                    f"for (int {s.var} = {start}; {s.var} < {end}; ++{s.var}) {{"
+                )
                 self._gen_body(s.body)
                 self._emit(f"}}")
         else:
@@ -2769,8 +3783,12 @@ class GenTranspiler:
                 self._gen_body(s.body)
                 self._emit(f"}}")
 
+
 class CodeGen:
-    def __init__(self, module_namespace: str = '', modules: set = None):
+    def __init__(
+        self, module_namespace: str = "", modules: set = None, module_consts: dict = None,
+        module_aliases: dict = None
+    ):
         self.out: PyList[str] = []
         self.depth = 0
         self.in_class: Optional[str] = None
@@ -2778,12 +3796,18 @@ class CodeGen:
         self._in_try = 0  # nesting depth of try blocks
         self.module_namespace = module_namespace
         self.modules: set = modules or set()
+        self.module_consts: dict = module_consts or {}
+        self.module_aliases: dict = module_aliases or {}
 
-    def w(self, line=''):
-        self.out.append('    '*self.depth + line)
+    def _resolve_mod(self, name: str) -> str:
+        return self.module_aliases.get(name, name)
+
+    def w(self, line=""):
+        self.out.append("    " * self.depth + line)
 
     def tmp(self) -> str:
-        self._tmp += 1; return f"_ox_{self._tmp}"
+        self._tmp += 1
+        return f"_ox_{self._tmp}"
 
     def generate(self, prog: Program, include_runtime: bool = True) -> str:
         if include_runtime:
@@ -2795,51 +3819,66 @@ class CodeGen:
         node_class = None
         for s in prog.stmts:
             if isinstance(s, ClassDef):
-                templ = f"template<{', '.join('typename '+g for g in s.generics)}> " if s.generics else ''
+                templ = (
+                    f"template<{', '.join('typename ' + g for g in s.generics)}> "
+                    if s.generics
+                    else ""
+                )
                 self.w(f"{templ}struct {s.name};")
-                if s.name == 'Node':
+                if s.name == "Node":
                     node_class = s
         if node_class:
-            self.w('')
+            self.w("")
             self.gen_class(node_class)  # full def early so List<Node> globals are valid
         if any(isinstance(s, ClassDef) and s is not node_class for s in prog.stmts):
-            self.w('')
+            self.w("")
         # Forward-declare all free functions so they can reference each other
         for s in prog.stmts:
             if isinstance(s, FnDef):
                 self.gen_fn_decl(s)
-        self.w('')
+        self.w("")
         for s in prog.stmts:
-            if s is node_class: continue
+            if s is node_class:
+                continue
             self.gen_top(s)
         if self.module_namespace:
             self.depth -= 1
             self.w("}")
-            self.w('')
-        return '\n'.join(self.out)
+            self.w("")
+        return "\n".join(self.out)
 
     def gen_top(self, node):
-        if   isinstance(node, ClassDef):  self.gen_class(node)
-        elif isinstance(node, FnDef):     self.gen_fn(node)
-        elif isinstance(node, ImportStmt): self.w(f"// import {'.'.join(node.path)}")
-        elif isinstance(node, VarDecl):   self.gen_var_decl(node); self.w('')
-        else: self.gen_stmt(node)
+        if isinstance(node, ClassDef):
+            self.gen_class(node)
+        elif isinstance(node, FnDef):
+            self.gen_fn(node)
+        elif isinstance(node, ImportStmt):
+            self.w(f"// import {'.'.join(node.path)}")
+        elif isinstance(node, VarDecl):
+            self.gen_var_decl(node)
+            self.w("")
+        else:
+            self.gen_stmt(node)
 
     # ── Class ──────────────────────────────────────────────────
 
     def gen_class(self, cls: ClassDef):
         if cls.generics:
-            self.w(f"template<{', '.join('typename '+g for g in cls.generics)}>")
+            self.w(f"template<{', '.join('typename ' + g for g in cls.generics)}>")
         self.w(f"struct {cls.name} {{")
         self.depth += 1
         for fn, ft in cls.fields:
             self.w(f"{map_type(ft)} {fn};")
-        if cls.fields and cls.methods: self.w('')
-        old = self.in_class; self.in_class = cls.name
-        for m in cls.methods: self.gen_method(m)
+        if cls.fields and cls.methods:
+            self.w("")
+        old = self.in_class
+        self.in_class = cls.name
+        for m in cls.methods:
+            self.gen_method(m)
         self.in_class = old
         self.depth -= 1
-        self.w('};'); self.w('')
+        self.w("};")
+        self.w("")
 
     def gen_method(self, fn: FnDef):
         parts = []
@@ -2848,28 +3887,96 @@ class CodeGen:
             if dflt is not None:
                 p += f" = {self.expr(dflt)}"
             parts.append(p)
-        params = ', '.join(parts)
+        params = ", ".join(parts)
         self.w(f"{map_type(fn.return_type)} {fn.name}({params}) {{")
         self.depth += 1
-        for s in fn.body: self.gen_stmt(s)
+        for s in fn.body:
+            self.gen_stmt(s)
         self.depth -= 1
-        self.w('}'); self.w('')
+        self.w("}")
+        self.w("")
 
     def _has_yield(self, stmts) -> bool:
         for s in stmts:
             if isinstance(s, YieldStmt):
                 return True
             if isinstance(s, (IfStmt, WhileStmt, ForStmt, TryCatchStmt)):
-                body = getattr(s, 'body', getattr(s, 'then_body', []))
+                body = getattr(s, "body", getattr(s, "then_body", []))
                 if self._has_yield(body if isinstance(body, list) else [body]):
                     return True
-                if hasattr(s, 'elif_clauses'):
+                if hasattr(s, "elif_clauses"):
                     for _, eb in s.elif_clauses:
                         if self._has_yield(eb):
                             return True
-                if hasattr(s, 'else_body') and s.else_body:
+                if hasattr(s, "else_body") and s.else_body:
                     if self._has_yield(s.else_body):
                         return True
+        return False
+
+    def _expr_mutates(self, expr, name: str) -> bool:
+        if isinstance(expr, FnCall):
+            if isinstance(expr.func, Ident) and expr.func.name in (
+                "push",
+                "pop",
+                "list_insert",
+                "list_remove",
+                "list_set",
+                "map_set",
+            ):
+                for a in expr.args:
+                    if isinstance(a, Ident) and a.name == name:
+                        return True
+            for a in expr.args:
+                if self._expr_mutates(a, name):
+                    return True
+            return self._expr_mutates(expr.func, name)
+        if isinstance(expr, BinOp):
+            return self._expr_mutates(expr.left, name) or self._expr_mutates(
+                expr.right, name
+            )
+        if isinstance(expr, UnaryOp):
+            return self._expr_mutates(expr.operand, name)
+        if isinstance(expr, Index):
+            return self._expr_mutates(expr.obj, name) or self._expr_mutates(
+                expr.idx, name
+            )
+        if isinstance(expr, MethodCall):
+            return self._expr_mutates(expr.obj, name) or any(
+                self._expr_mutates(a, name) for a in expr.args
+            )
+        if isinstance(expr, Attr):
+            return self._expr_mutates(expr.obj, name)
+        if isinstance(expr, SomeLit):
+            return self._expr_mutates(expr.value, name)
+        return False
+
+    def _param_mutated(self, name: str, body) -> bool:
+        for s in body:
+            if isinstance(s, ExprStmt):
+                if self._expr_mutates(s.expr, name):
+                    return True
+            elif isinstance(s, Assignment):
+                if isinstance(s.target, Index) and isinstance(
+                    s.target.obj, Ident
+                ):
+                    if s.target.obj.name == name:
+                        return True
+                elif s.op != "=" and isinstance(s.target, Ident) and s.target.name == name:
+                    return True
+            elif isinstance(s, ReturnStmt):
+                if s.value and self._expr_mutates(s.value, name):
+                    return True
+            elif isinstance(s, IfStmt):
+                if self._param_mutated(name, s.then_body) or self._param_mutated(
+                    name, s.else_body or []
+                ):
+                    return True
+                for _, eb in s.elif_clauses:
+                    if self._param_mutated(name, eb):
+                        return True
+            elif isinstance(s, (ForStmt, WhileStmt)):
+                if self._param_mutated(name, s.body):
+                    return True
         return False
 
     def gen_fn(self, fn: FnDef):
@@ -2891,36 +3998,45 @@ class CodeGen:
                     defaults.append(f"typename {g}")
             self.w(f"template<{', '.join(defaults)}>")
         params_list = list(fn.params)
-        primitives = {'int', 'float', 'bool', 'str', 'void'}
+        primitives = {"int", "float", "bool", "str", "void", "long"}
         generic_set = set(fn.generics)
         parts = []
         for n, t, dflt, *_ in params_list:
             base = _base_type(t)
-            if base not in primitives and base not in ('List', 'Map', 'Option') and base not in generic_set:
+            if base in ("List", "Map") and self._param_mutated(n, fn.body):
+                # mutable container passed by reference (Python semantics)
                 p = f"{map_type(t)}& {n}"
+            elif (
+                base not in primitives
+                and base not in ("List", "Map", "Option")
+                and base not in generic_set
+            ):
+                p = f"const {map_type(t)}& {n}"
             else:
                 p = f"{map_type(t)} {n}"
             if dflt is not None:
                 p += f" = {self.expr(dflt)}"
             parts.append(p)
-        params = ', '.join(parts)
-        # C++ requires main() to return int
-        ret = 'int' if fn.name == 'main' else map_type(fn.return_type)
-        if fn.name == 'main':
+        params = ", ".join(parts)
+        ret = "int" if fn.name == "main" else map_type(fn.return_type)
+        if fn.name == "main":
             self.w(f"int main(int argc, char* argv[]) {{")
             self.depth += 1
-            self.w('_ox_argc = argc; _ox_argv = argv;')
-            self.w('#ifdef _WIN32')
-            self.w('SetConsoleOutputCP(CP_UTF8);')
-            self.w('#endif')
-            for s in fn.body: self.gen_stmt(s)
-            self.w('return 0;')
+            self.w("_ox_argc = argc; _ox_argv = argv;")
+            self.w("#ifdef _WIN32")
+            self.w("SetConsoleOutputCP(CP_UTF8);")
+            self.w("#endif")
+            for s in fn.body:
+                self.gen_stmt(s)
+            self.w("return 0;")
         else:
             self.w(f"{ret} {fn.name}({params}) {{")
             self.depth += 1
-            for s in fn.body: self.gen_stmt(s)
+            for s in fn.body:
+                self.gen_stmt(s)
         self.depth -= 1
-        self.w('}'); self.w('')
+        self.w("}")
+        self.w("")
 
     def gen_fn_decl(self, fn: FnDef):
         """Forward-declare a free function so it can be referenced before definition."""
@@ -2941,21 +4057,27 @@ class CodeGen:
                     defaults.append(f"typename {g}")
             self.w(f"template<{', '.join(defaults)}>")
         params_list = list(fn.params)
-        primitives = {'int', 'float', 'bool', 'str', 'void'}
+        primitives = {"int", "float", "bool", "str", "void", "long"}
         generic_set = set(fn.generics)
         parts = []
         for n, t, dflt, *_ in params_list:
             base = _base_type(t)
-            if base not in primitives and base not in ('List', 'Map', 'Option') and base not in generic_set:
+            if base in ("List", "Map") and self._param_mutated(n, fn.body):
                 p = f"{map_type(t)}& {n}"
+            elif (
+                base not in primitives
+                and base not in ("List", "Map", "Option")
+                and base not in generic_set
+            ):
+                p = f"const {map_type(t)}& {n}"
             else:
                 p = f"{map_type(t)} {n}"
             if dflt is not None:
                 p += f" = {self.expr(dflt)}"
             parts.append(p)
-        params = ', '.join(parts)
-        ret = 'int' if fn.name == 'main' else map_type(fn.return_type)
-        if fn.name == 'main':
+        params = ", ".join(parts)
+        ret = "int" if fn.name == "main" else map_type(fn.return_type)
+        if fn.name == "main":
             self.w(f"int main(int argc, char* argv[]);")
         else:
             self.w(f"{ret} {fn.name}({params});")
@@ -2963,45 +4085,59 @@ class CodeGen:
     # ── Statements ─────────────────────────────────────────────
 
     def gen_stmt(self, node):
-        if isinstance(node, VarDecl):     self.gen_var_decl(node)
-        elif isinstance(node, Assignment): self.gen_assign(node)
+        if isinstance(node, VarDecl):
+            self.gen_var_decl(node)
+        elif isinstance(node, Assignment):
+            self.gen_assign(node)
         elif isinstance(node, ReturnStmt):
-            v = self.expr(node.value) if node.value is not None else ''
-            self.w(f"return{' '+v if v else ''};")
-        elif isinstance(node, BreakStmt):    self.w('break;')
-        elif isinstance(node, ContinueStmt): self.w('continue;')
-        elif isinstance(node, IfStmt):     self.gen_if(node)
-        elif isinstance(node, ForStmt):    self.gen_for(node)
-        elif isinstance(node, WhileStmt):  self.gen_while(node)
-        elif isinstance(node, MatchStmt):  self.gen_match(node)
-        elif isinstance(node, ExprStmt):   self.w(f"{self.expr(node.expr)};")
-        elif isinstance(node, FnDef):      self.gen_fn(node)
+            v = self.expr(node.value) if node.value is not None else ""
+            self.w(f"return{' ' + v if v else ''};")
+        elif isinstance(node, BreakStmt):
+            self.w("break;")
+        elif isinstance(node, ContinueStmt):
+            self.w("continue;")
+        elif isinstance(node, IfStmt):
+            self.gen_if(node)
+        elif isinstance(node, ForStmt):
+            self.gen_for(node)
+        elif isinstance(node, WhileStmt):
+            self.gen_while(node)
+        elif isinstance(node, MatchStmt):
+            self.gen_match(node)
+        elif isinstance(node, ExprStmt):
+            self.w(f"{self.expr(node.expr)};")
+        elif isinstance(node, FnDef):
+            self.gen_fn(node)
         elif isinstance(node, DeferStmt):
             tmp = self.tmp()
             self.w(f"_ox_defer_impl {tmp}([&]() {{ {self.expr(node.expr)}; }});")
         elif isinstance(node, TryCatchStmt):
             self._in_try += 1
-            self.w('try {')
+            self.w("try {")
             self.depth += 1
-            for s in node.try_body: self.gen_stmt(s)
+            for s in node.try_body:
+                self.gen_stmt(s)
             self.depth -= 1
             self._in_try -= 1
-            self.w(f'}} catch (const _ox_try_exception& _ox_err) {{')
+            self.w(f"}} catch (const _ox_try_exception& _ox_err) {{")
             self.depth += 1
-            self.w(f'std::string {node.catch_var} = _ox_err.msg;')
-            for s in node.catch_body: self.gen_stmt(s)
+            self.w(f"std::string {node.catch_var} = _ox_err.msg;")
+            for s in node.catch_body:
+                self.gen_stmt(s)
             self.depth -= 1
-            self.w('}')
-        else: self.w(f"/* unhandled {type(node).__name__} */")
+            self.w("}")
+        else:
+            self.w(f"/* unhandled {type(node).__name__} */")
 
     def gen_var_decl(self, v: VarDecl):
         val = self.expr(v.value)
-        if hasattr(v, '_destructure_vars'):
+        const = "const " if v.pub and not v.mutable else ""
+        if hasattr(v, "_destructure_vars"):
             self.w(f"auto [{', '.join(v._destructure_vars)}] = {val};")
         elif v.type_ann:
-            self.w(f"{map_type(v.type_ann)} {v.name} = {val};")
+            self.w(f"{const}{map_type(v.type_ann)} {v.name} = {val};")
         else:
-            self.w(f"auto {v.name} = {val};")
+            self.w(f"{const}auto {v.name} = {val};")
 
     def gen_assign(self, a: Assignment):
         self.w(f"{self.expr(a.target)} {a.op} {self.expr(a.value)};")
@@ -3009,22 +4145,30 @@ class CodeGen:
     def gen_if(self, node: IfStmt):
         self.w(f"if ({self.expr(node.cond)}) {{")
         self.depth += 1
-        for s in node.then_body: self.gen_stmt(s)
-        self.depth -= 1; self.w('}')
+        for s in node.then_body:
+            self.gen_stmt(s)
+        self.depth -= 1
+        self.w("}")
         for ec, eb in node.elif_clauses:
             self.w(f"else if ({self.expr(ec)}) {{")
             self.depth += 1
-            for s in eb: self.gen_stmt(s)
-            self.depth -= 1; self.w('}')
+            for s in eb:
+                self.gen_stmt(s)
+            self.depth -= 1
+            self.w("}")
         if node.else_body is not None:
-            self.w('else {'); self.depth += 1
-            for s in node.else_body: self.gen_stmt(s)
-            self.depth -= 1; self.w('}')
+            self.w("else {")
+            self.depth += 1
+            for s in node.else_body:
+                self.gen_stmt(s)
+            self.depth -= 1
+            self.w("}")
 
     def gen_for(self, node: ForStmt):
         it = node.iterable
         if isinstance(it, RangeLit):
-            s = self.expr(it.start); e = self.expr(it.end)
+            s = self.expr(it.start)
+            e = self.expr(it.end)
             self.w(f"for (int {node.var} = {s}; {node.var} < {e}; ++{node.var}) {{")
         elif isinstance(it, StrLit):
             self.w(f"for (auto {node.var} : std::string({self.expr(it)})) {{")
@@ -3033,23 +4177,27 @@ class CodeGen:
         else:
             self.w(f"for (auto {node.var} : {self.expr(it)}) {{")
         self.depth += 1
-        for s in node.body: self.gen_stmt(s)
-        self.depth -= 1; self.w('}')
+        for s in node.body:
+            self.gen_stmt(s)
+        self.depth -= 1
+        self.w("}")
 
     def gen_while(self, node: WhileStmt):
         self.w(f"while ({self.expr(node.cond)}) {{")
         self.depth += 1
-        for s in node.body: self.gen_stmt(s)
-        self.depth -= 1; self.w('}')
+        for s in node.body:
+            self.gen_stmt(s)
+        self.depth -= 1
+        self.w("}")
 
     def gen_generator_fn(self, fn: FnDef):
         """Generate state-machine C++ for a generator function."""
         t = GenTranspiler(self, fn)
         struct_code, wrapper_code = t.transpile()
-        for ln in struct_code.split('\n'):
+        for ln in struct_code.split("\n"):
             self.w(ln)
-        self.w('')
-        for ln in wrapper_code.split('\n'):
+        self.w("")
+        for ln in wrapper_code.split("\n"):
             self.w(ln)
 
     def gen_match(self, node: MatchStmt):
@@ -3058,165 +4206,307 @@ class CodeGen:
         first = True
         for pat, body in node.arms:
             if isinstance(pat, WildCard):
-                kw = '{' if first else 'else {'
+                kw = "{" if first else "else {"
             elif isinstance(pat, RangeLit):
-                s = self.expr(pat.start); e = self.expr(pat.end)
+                s = self.expr(pat.start)
+                e = self.expr(pat.end)
                 cond = f"({sv} >= {s} && {sv} < {e})"
                 kw = f"if ({cond}) {{" if first else f"else if ({cond}) {{"
             else:
                 pv = self.expr(pat)
                 kw = f"if ({sv} == {pv}) {{" if first else f"else if ({sv} == {pv}) {{"
-            self.w(kw); first = False
+            self.w(kw)
+            first = False
             self.depth += 1
-            for s in body: self.gen_stmt(s)
-            self.depth -= 1; self.w('}')
+            for s in body:
+                self.gen_stmt(s)
+            self.depth -= 1
+            self.w("}")
 
     # ── Expressions ────────────────────────────────────────────
 
     def expr(self, node) -> str:
-        if isinstance(node, IntLit):    return str(node.value)
+        if isinstance(node, IntLit):
+            return str(node.value)
         if isinstance(node, FloatLit):
             s = str(node.value)
-            return s if '.' in s or 'e' in s else s+'.0'
+            return s if "." in s or "e" in s else s + ".0"
         if isinstance(node, StrLit):
-            esc = (node.value
-                   .replace('\\','\\\\').replace('"','\\"')
-                   .replace('\n','\\n').replace('\t','\\t').replace('\r','\\r'))
+            esc = (
+                node.value.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\t", "\\t")
+                .replace("\r", "\\r")
+            )
             return f'"{esc}"'
-        if isinstance(node, BoolLit):  return 'true' if node.value else 'false'
-        if isinstance(node, NoneLit):  return 'std::nullopt'
-        if isinstance(node, SomeLit):  return f"Some({self.expr(node.value)})"
-        if isinstance(node, WildCard): return '_'
+        if isinstance(node, BoolLit):
+            return "true" if node.value else "false"
+        if isinstance(node, NoneLit):
+            return "std::nullopt"
+        if isinstance(node, SomeLit):
+            return f"Some({self.expr(node.value)})"
+        if isinstance(node, WildCard):
+            return "_"
         if isinstance(node, Ident):
             # self → (*this) inside class methods
-            if node.name == 'self' and self.in_class:
-                return '(*this)'
-            if '<' in node.name:
+            if node.name == "self" and self.in_class:
+                return "(*this)"
+            if "<" in node.name:
                 return map_type(node.name)
             return node.name
         if isinstance(node, BinOp):
             op = node.op
-            lt = getattr(node.left, '_type', '')
-            rt = getattr(node.right, '_type', '')
-            lbase = _base_type(lt) if lt else ''
-            rbase = _base_type(rt) if rt else ''
-            both_primitive = (lt in ('int','float','bool','str','void') or not lt) and (rt in ('int','float','bool','str','void') or not rt)
-            op_methods = {'+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div', '%': 'op_mod'}
+            lt = getattr(node.left, "_type", "")
+            rt = getattr(node.right, "_type", "")
+            lbase = _base_type(lt) if lt else ""
+            rbase = _base_type(rt) if rt else ""
+            both_primitive = (
+                lt in ("int", "float", "bool", "str", "void", "long") or not lt
+            ) and (rt in ("int", "float", "bool", "str", "void", "long") or not rt)
+            # List repetition: [0] * 5  or 5 * [0]
+            if (
+                op == "*"
+                and (lbase == "List" or rbase == "List")
+                and (
+                    lt in ("int", "float", "bool", "str", "void", "long")
+                    or rt in ("int", "float", "bool", "str", "void", "long")
+                )
+            ):
+                if lbase == "List":
+                    return (
+                        f"_ox_repeat({self.expr(node.left)}, {self.expr(node.right)})"
+                    )
+                else:
+                    return (
+                        f"_ox_repeat({self.expr(node.right)}, {self.expr(node.left)})"
+                    )
+            op_methods = {
+                "+": "op_add",
+                "-": "op_sub",
+                "*": "op_mul",
+                "/": "op_div",
+                "%": "op_mod",
+            }
             if not both_primitive and op in op_methods:
                 left = self.expr(node.left)
                 right = self.expr(node.right)
                 return f"{left}.{op_methods[op]}({right})"
-            if op == 'in':
+            if op == "in":
                 return f"(contains({self.expr(node.right)}, {self.expr(node.left)}))"
-            op = {'and':'&&','or':'||'}.get(node.op, node.op)
+            op = {"and": "&&", "or": "||"}.get(node.op, node.op)
             return f"({self.expr(node.left)} {op} {self.expr(node.right)})"
         if isinstance(node, UnaryOp):
             return f"({node.op} {self.expr(node.operand)})"
         if isinstance(node, FnCall):
-            fn   = self.expr(node.func)
-            args = ', '.join(self.expr(a) for a in node.args)
+            fn = self.expr(node.func)
+            if isinstance(node.func, Ident) and node.func.name == "range":
+                if len(node.args) == 2:
+                    args = ", ".join(self.expr(a) for a in node.args) + ", 1"
+                else:
+                    args = ", ".join(self.expr(a) for a in node.args)
+            else:
+                args = ", ".join(self.expr(a) for a in node.args)
             if isinstance(node.func, Ident):
-                if node.func.name == 'Ok':
+                if node.func.name == "Ok":
                     return f"Ok({args})"
-                if node.func.name == 'Err':
+                if node.func.name == "Err":
                     return f"Err({args})"
-                if node.func.name == 'list':
+                if node.func.name == "list":
                     return f"_ox_list_from_str({args})"
-                if node.func.name == 'sorted':
+                if node.func.name == "sorted":
                     return f"_ox_sorted({args})"
-                if node.func.name == 'enumerate':
+                if node.func.name == "enumerate":
                     return f"_ox_enumerate({args})"
-                if node.func.name == 'batched':
+                if node.func.name == "zip":
+                    return f"_ox_zip({args})"
+                if node.func.name == "isinstance":
+                    val = self.expr(node.args[0])
+                    ty = self.expr(node.args[1])
+                    val_type = getattr(node.args[0], "_type", "")
+                    base = _base_type(val_type) if val_type else ""
+                    if base == "JsonValue":
+                        tm = {
+                            "int": "json_is_int",
+                            "float": "json_is_float",
+                            "str": "json_is_str",
+                            "bool": "json_is_bool",
+                            "long": "json_is_int",
+                            "list": "json_is_list",
+                            "dict": "json_is_dict",
+                            "null": "json_is_null",
+                        }
+                        for jsn, fn in tm.items():
+                            if (
+                                isinstance(node.args[1], StrLit)
+                                and node.args[1].value == jsn
+                            ):
+                                return f"{fn}({val})"
+                        return f"false"
+                    vart = getattr(node.args[0], "_type", "void")
+                    if isinstance(node.args[1], StrLit):
+                        tcheck = {
+                            "int": "int",
+                            "float": "float",
+                            "str": "str",
+                            "bool": "bool",
+                            "long": "long",
+                            "list": "List",
+                            "dict": "Map",
+                            "option": "Option",
+                        }
+                        required = tcheck.get(node.args[1].value, "")
+                        if required:
+                            return "true" if _base_type(vart) == required else "false"
+                    return "true"
+                if node.func.name == "batched":
                     return f"_ox_batched({args})"
-                if node.func.name == 'int':
+                if node.func.name == "int":
                     return f"static_cast<int>({args})"
-                if node.func.name == 'float':
+                if node.func.name == "long":
+                    return f"static_cast<int64_t>({args})"
+                if node.func.name == "float":
                     return f"static_cast<double>({args})"
-                if node.func.name == 'bool':
+                if node.func.name == "bool":
                     return f"static_cast<bool>({args})"
-                if node.func.name == 'assert':
+                if node.func.name == "assert":
                     if len(node.args) == 1:
                         return f"_ox_assert({args})"
                     else:
                         return f"_ox_assert_msg({args})"
-                if '<' in node.func.name:
+                if "<" in node.func.name:
                     fn = map_type(node.func.name)
             return f"{fn}({args})"
         if isinstance(node, MethodCall):
-            obj  = self.expr(node.obj)
-            args = ', '.join(self.expr(a) for a in node.args)
-            mname = map_type(node.name) if '<' in node.name else node.name
-            obj_type = getattr(node.obj, '_type', '')
-            obj_base = _base_type(obj_type) if obj_type else ''
+            obj = self.expr(node.obj)
+            args = ", ".join(self.expr(a) for a in node.args)
+            mname = map_type(node.name) if "<" in node.name else node.name
+            obj_type = getattr(node.obj, "_type", "")
+            obj_base = _base_type(obj_type) if obj_type else ""
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
-                return f"_oxm_{node.obj.name}::{mname}({args})"
-            if node.name == 'sorted':
+                return f"_oxm_{self._resolve_mod(node.obj.name)}::{mname}({args})"
+            if node.name == "sorted":
                 if args:
                     return f"_ox_sorted({obj}, {args})"
                 return f"_ox_sorted({obj})"
             # String method dispatch (checked before list chaining)
             str_methods = {
-                'length': 'len', 'contains': 'str_contains',
-                'starts_with': 'starts_with', 'ends_with': 'ends_with',
-                'count': 'str_count', 'find': 'str_find',
-                'to_upper': 'to_upper', 'to_lower': 'to_lower',
-                'replace': 'str_replace', 'reverse': 'str_reverse',
+                "length": "len",
+                "contains": "str_contains",
+                "starts_with": "starts_with",
+                "ends_with": "ends_with",
+                "count": "str_count",
+                "find": "str_find",
+                "to_upper": "to_upper",
+                "to_lower": "to_lower",
+                "replace": "str_replace",
+                "reverse": "str_reverse",
             }
-            if obj_base == 'str' and node.name in str_methods:
+            if obj_base == "str" and node.name in str_methods:
                 func = str_methods[node.name]
                 return f"{func}({obj}{', ' + args if args else ''})"
             # Option methods dispatch
-            if obj_base == 'Option' and node.name == 'is_some':
+            if obj_base == "Option" and node.name == "is_some":
                 return f"{obj}.has_value()"
-            if obj_base == 'Option' and node.name == 'is_none':
+            if obj_base == "Option" and node.name == "is_none":
                 return f"!{obj}.has_value()"
             # List methods dispatch
             list_methods = {
-                'length': 'len', 'contains': 'contains', 'count': '_ox_count',
+                "length": "len",
+                "contains": "contains",
+                "count": "_ox_count",
+                "join": "str_join",
             }
-            if obj_base == 'List' and node.name in list_methods:
+            if obj_base == "List" and node.name in list_methods:
                 func = list_methods[node.name]
                 return f"{func}({obj}{', ' + args if args else ''})"
             # List chaining methods
-            if node.name in ('map','filter','reduce','for_each','each','any','all',
-                             'find','sum','min','max','combinations','permutations',
-                             'chunked','batched','windowed','pairwise','reversed','cycle',
-                             'take_while','drop_while'):
+            if node.name in (
+                "map",
+                "filter",
+                "reduce",
+                "for_each",
+                "each",
+                "any",
+                "all",
+                "find",
+                "sum",
+                "min",
+                "max",
+                "combinations",
+                "permutations",
+                "chunked",
+                "batched",
+                "windowed",
+                "pairwise",
+                "reversed",
+                "cycle",
+                "take_while",
+                "drop_while",
+            ):
                 fn_args = []
                 for a in node.args:
-                    if isinstance(a, Attr) and isinstance(a.obj, Ident) and getattr(a.obj, '_type', '') == 'type':
+                    if (
+                        isinstance(a, Attr)
+                        and isinstance(a.obj, Ident)
+                        and getattr(a.obj, "_type", "") == "type"
+                    ):
                         cls = a.obj.name
                         mname = a.name
-                        fn_args.append(f"[](const {cls}& x) {{ return const_cast<{cls}&>(x).{mname}(); }}")
+                        fn_args.append(
+                            f"[](const {cls}& x) {{ return const_cast<{cls}&>(x).{mname}(); }}"
+                        )
                     else:
                         fn_args.append(self.expr(a))
-                fn_args_str = ', '.join(fn_args)
-                return f"_ox_{node.name}({obj}{', ' + fn_args_str if fn_args_str else ''})"
+                fn_args_str = ", ".join(fn_args)
+                return (
+                    f"_ox_{node.name}({obj}{', ' + fn_args_str if fn_args_str else ''})"
+                )
             return f"{obj}.{mname}({args})"
         if isinstance(node, Attr):
+            if isinstance(node.obj, Ident) and node.name in self.module_consts.get(
+                self._resolve_mod(node.obj.name), {}
+            ):
+                return f"_oxm_{self._resolve_mod(node.obj.name)}::{node.name}"
             if node.name.isdigit():
-                obj_type = getattr(node.obj, '_type', '')
-                if obj_type.startswith('('):
+                obj_type = getattr(node.obj, "_type", "")
+                if obj_type.startswith("("):
                     return f"std::get<{node.name}>({self.expr(node.obj)})"
-            if node.name == 'value' and isinstance(node.obj, (Ident, FnCall, MethodCall)):
-                obj_type = getattr(node.obj, '_type', '')
-                if _base_type(obj_type) == 'Option':
+            if node.name == "value" and isinstance(
+                node.obj, (Ident, FnCall, MethodCall)
+            ):
+                obj_type = getattr(node.obj, "_type", "")
+                if _base_type(obj_type) == "Option":
                     return f"_ox_value({self.expr(node.obj)})"
             return f"{self.expr(node.obj)}.{node.name}"
         if isinstance(node, Index):
             obj = self.expr(node.obj)
-            obj_type = getattr(node.obj, '_type', '')
-            base = _base_type(obj_type) if obj_type else ''
-            _known_bracket_types = {'List','Map','Option','Result','Generator','str','int','float','bool','void','NdArray'}
-            is_user_class = bool(base and base not in _known_bracket_types and obj_type != 'void')
+            obj_type = getattr(node.obj, "_type", "")
+            base = _base_type(obj_type) if obj_type else ""
+            _known_bracket_types = {
+                "List",
+                "Map",
+                "Option",
+                "Result",
+                "Generator",
+                "str",
+                "int",
+                "float",
+                "bool",
+                "void",
+                "NdArray",
+            }
+            is_user_class = bool(
+                base and base not in _known_bracket_types and obj_type != "void"
+            )
             if isinstance(node.idx, SliceLit):
                 s = node.idx
-                start = self.expr(s.start) if s.start is not None else '0'
-                end = self.expr(s.end) if s.end is not None else '-1'
-                step = self.expr(s.step) if s.step is not None else '1'
+                start = self.expr(s.start) if s.start is not None else "0"
+                end = self.expr(s.end) if s.end is not None else "-1"
+                step = self.expr(s.step) if s.step is not None else "1"
                 if is_user_class:
                     return f"{obj}.op_slice({start}, {end}, {step})"
-                if base == 'str':
+                if base == "str":
                     return f"_ox_str_slice({obj}, {start}, {end}, {step})"
                 return f"_ox_slice({obj}, {start}, {end}, {step})"
             if is_user_class:
@@ -3227,63 +4517,73 @@ class CodeGen:
                 return f"_ox_try_throw({self.expr(node.value)})"
             return f"_ox_try({self.expr(node.value)})"
         if isinstance(node, ListLit):
-            elems = ', '.join(self.expr(e) for e in node.elems)
+            elems = ", ".join(self.expr(e) for e in node.elems)
             if not elems:
-                lt = getattr(node, '_type', '')
+                lt = getattr(node, "_type", "")
                 if lt:
-                    return f'{map_type(lt)}()'
-                return '{}'
-            return '_ox_make_list({' + elems + '})'
+                    return f"{map_type(lt)}()"
+                return "{}"
+            return "_ox_make_list({" + elems + "})"
         if isinstance(node, TupleLit):
-            elems = ', '.join(self.expr(e) for e in node.elems)
-            return f'std::make_tuple({elems})'
+            elems = ", ".join(self.expr(e) for e in node.elems)
+            return f"std::make_tuple({elems})"
         if isinstance(node, TernaryExpr):
             return f"({self.expr(node.cond)} ? {self.expr(node.then_expr)} : {self.expr(node.else_expr)})"
         if isinstance(node, LambdaExpr):
-            params = ', '.join(f'auto {p}' for p in node.params)
+            params = ", ".join(f"auto {p}" for p in node.params)
             body = self.expr(node.body)
-            return f'[&]({params}) {{ return {body}; }}'
+            return f"[&]({params}) {{ return {body}; }}"
         if isinstance(node, StructLit):
-            flds = ', '.join(f".{n}={self.expr(v)}" for n,v in node.fields)
+            flds = ", ".join(f".{n}={self.expr(v)}" for n, v in node.fields)
             return f"{node.type_name}{{{flds}}}"
         if isinstance(node, RangeLit):
             return f"range({self.expr(node.start)}, {self.expr(node.end)})"
         return f"/* ? {type(node).__name__} */"
 
+
 # ═══════════════════════════════════════════════════════════════
 #  TYPE CHECKER  (semantic analysis)
 # ═══════════════════════════════════════════════════════════════
 
-_PRIMITIVE_TYPES = {'int', 'float', 'bool', 'str', 'void'}
-_CONTAINER_TYPES = {'List', 'Map', 'Option', 'Result', 'Generator'}
+_PRIMITIVE_TYPES = {"int", "float", "bool", "str", "void", "long"}
+_CONTAINER_TYPES = {"List", "Map", "Option", "Result", "Generator"}
+
 
 def _base_type(t: str) -> str:
-    return t.split('<')[0] if '<' in t else t
+    return t.split("<")[0] if "<" in t else t
+
 
 def _type_params(t: str) -> PyList[str]:
-    if '<' not in t:
-        if t.startswith('('):
+    if "<" not in t:
+        if t.startswith("("):
             return [t]
         return []
-    inner = t[t.index('<') + 1:t.rindex('>')]
-    depth, cur, parts = 0, '', []
+    inner = t[t.index("<") + 1 : t.rindex(">")]
+    depth, cur, parts = 0, "", []
     for c in inner:
-        if c in '<([':
+        if c in "<([":
             depth += 1
-        elif c in '>)]':
+        elif c in ">)]":
             depth -= 1
-        if c == ',' and depth == 0:
+        if c == "," and depth == 0:
             parts.append(cur.strip())
-            cur = ''
+            cur = ""
         else:
             cur += c
     if cur.strip():
         parts.append(cur.strip())
     return parts
 
+
 class TypeChecker:
-    def __init__(self, spans: dict, source_file: SourceFile,
-                 module_fns: dict = None, module_classes: dict = None):
+    def __init__(
+        self,
+        spans: dict,
+        source_file: SourceFile,
+        module_fns: dict = None,
+        module_classes: dict = None,
+        module_consts: dict = None,
+    ):
         self.diags: PyList[Diagnostic] = []
         self.spans = spans
         self.src = source_file
@@ -3296,11 +4596,12 @@ class TypeChecker:
         self.in_class: Optional[str] = None
         self.modules: dict = {}  # mod_name -> {fn_name: (params, ret, node), ...}
         self.module_classes: dict = {}  # mod_name -> {cls_name: ClassDef}
+        self.module_consts: dict = {}  # mod_name -> {const_name: type}
         self.generic_params: set = set()  # generic type params in scope (T, K, V, etc.)
         if module_fns:
             for mod_name, fns in module_fns.items():
                 # Register module name in scope
-                self.vars[0][mod_name] = 'module'
+                self.vars[0][mod_name] = "module"
                 # Store module info for MethodCall resolution
                 self.modules[mod_name] = {}
                 for fn_name, (params, ret, node) in fns.items():
@@ -3317,174 +4618,292 @@ class TypeChecker:
                     self.classes[prefixed] = cls_def
                     self.classes[cls_name] = cls_def
                     self.module_classes[mod_name][cls_name] = cls_def
+        if module_consts:
+            for mod_name, consts in module_consts.items():
+                self.vars[0][mod_name] = "module"
+                self.module_consts[mod_name] = consts
 
     def _init_builtins(self):
         builtin_fns = {
-            'print': ([], 'void'),  # special-cased: accepts any type
-            'len': ([('x', 'void')], 'int'),
-            'push': ([('list', 'void'), ('val', 'void')], 'void'),
-            'pop': ([('list', 'void')], 'void'),
-            'range': ([('a', 'int'), ('b', 'int')], 'List<int>'),
-            'str': ([('x', 'void')], 'str'),
-            'int': ([('x', 'void')], 'int'),
-            'float': ([('x', 'void')], 'float'),
-            'bool': ([('x', 'void')], 'bool'),
-            'sqrt': ([('x', 'float')], 'float'),
-            'abs': ([('x', 'float')], 'float'),
-            'pow': ([('x', 'float'), ('y', 'float')], 'float'),
-            'sin': ([('x', 'float')], 'float'),
-            'cos': ([('x', 'float')], 'float'),
-            'tan': ([('x', 'float')], 'float'),
-            'floor': ([('x', 'float')], 'float'),
-            'ceil': ([('x', 'float')], 'float'),
-            'round': ([('x', 'float')], 'float'),
-            'log': ([('x', 'float')], 'float'),
-            'exp': ([('x', 'float')], 'float'),
-            'min': ([('a', 'int'), ('b', 'int')], 'int'),
-            'max': ([('a', 'int'), ('b', 'int')], 'int'),
-            'PI': ([], 'float'),
-            'E': ([], 'float'),
-            'asin': ([('x', 'float')], 'float'),
-            'acos': ([('x', 'float')], 'float'),
-            'atan': ([('x', 'float')], 'float'),
-            'atan2': ([('y', 'float'), ('x', 'float')], 'float'),
-            'sinh': ([('x', 'float')], 'float'),
-            'cosh': ([('x', 'float')], 'float'),
-            'tanh': ([('x', 'float')], 'float'),
-            '_ox_randint': ([('min', 'int'), ('max', 'int')], 'int'),
-            '_ox_randfloat': ([], 'float'),
-            '_ox_randseed': ([('seed', 'int')], 'void'),
-            '_ox_randbool': ([], 'bool'),
-            'contains': ([('list', 'void'), ('x', 'void')], 'bool'),
-            'read_file': ([('path', 'str')], 'str'),
-            'read_lines': ([('path', 'str')], 'List<str>'),
-            'write_file': ([('path', 'str'), ('contents', 'str')], 'void'),
-            'exec': ([('cmd', 'str')], 'int'),
-            'exit': ([('code', 'int')], 'void'),
-            'to_int': ([('s', 'str')], 'int'),
-            'to_float': ([('s', 'str')], 'float'),
-            'parse_int': ([('s', 'str'), ('base', 'int')], 'int'),
-            'str_get': ([('s', 'str'), ('i', 'int')], 'str'),
-            'str_sub': ([('s', 'str'), ('start', 'int'), ('end', 'int')], 'str'),
-            'str_contains': ([('s', 'str'), ('sub', 'str')], 'bool'),
-            'args': ([], 'List<str>'),
-            'is_digit': ([('c', 'str')], 'bool'),
-            'is_alpha': ([('c', 'str')], 'bool'),
-            'is_alnum': ([('c', 'str')], 'bool'),
-            'str_split': ([('s', 'str'), ('delim', 'str')], 'List<str>'),
-            'str_trim': ([('s', 'str')], 'str'),
-            'str_trim_start': ([('s', 'str')], 'str'),
-            'str_trim_end': ([('s', 'str')], 'str'),
-            'str_replace': ([('s', 'str'), ('old_str', 'str'), ('new_str', 'str')], 'str'),
-            'str_replace_all': ([('s', 'str'), ('old_str', 'str'), ('new_str', 'str')], 'str'),
-            'str_join': ([('v', 'List<str>'), ('delim', 'str')], 'str'),
-            'to_upper': ([('s', 'str')], 'str'),
-            'to_lower': ([('s', 'str')], 'str'),
-            'starts_with': ([('s', 'str'), ('prefix', 'str')], 'bool'),
-            'ends_with': ([('s', 'str'), ('suffix', 'str')], 'bool'),
-            'str_repeat': ([('s', 'str'), ('n', 'int')], 'str'),
-            'str_reverse': ([('s', 'str')], 'str'),
-            'str_find': ([('s', 'str'), ('sub', 'str')], 'Option<int>'),
-            'map_contains': ([('m', 'void'), ('k', 'void')], 'bool'),
-            'map_get': ([('m', 'void'), ('k', 'void')], 'void'),
-            'map_set': ([('m', 'void'), ('k', 'void'), ('v', 'void')], 'void'),
-            'list_insert': ([('v', 'void'), ('i', 'int'), ('x', 'void')], 'void'),
-            'list_remove': ([('v', 'void'), ('i', 'int')], 'void'),
-            '_ox_count': ([('v', 'void'), ('x', 'void')], 'int'),
-            'str_count': ([('s', 'str'), ('sub', 'str')], 'int'),
-            '_ox_list_from_str': ([('s', 'str')], 'List<str>'),
-            '_ox_to_ndarray': ([('v', 'void')], 'NdArray'),
-            'fs_exists': ([('path', 'str')], 'bool'),
-            'fs_is_file': ([('path', 'str')], 'bool'),
-            'fs_is_dir': ([('path', 'str')], 'bool'),
-            'fs_mkdir': ([('path', 'str')], 'void'),
-            'fs_list_dir': ([('path', 'str')], 'List<str>'),
-            'fs_remove': ([('path', 'str')], 'void'),
-            'fs_rename': ([('old_path', 'str'), ('new_path', 'str')], 'void'),
-            'fs_copy': ([('from', 'str'), ('to', 'str')], 'void'),
-            'fs_cwd': ([], 'str'),
-            'str_format': ([('fmt', 'str'), ('args', 'List<str>')], 'str'),
-            'panic': ([('msg', 'str')], 'void'),
-            'assert': ([('cond', 'bool')], 'void'),
-            'eprint': ([('msg', 'str')], 'void'),
-            'eprintln': ([('msg', 'str')], 'void'),
-            'read_line': ([], 'str'),
-            'append_file': ([('path', 'str'), ('contents', 'str')], 'void'),
-            'temp_dir': ([], 'str'),
-            'temp_file': ([], 'str'),
+            "print": ([], "void"),  # special-cased: accepts any type
+            "len": ([("x", "void")], "int"),
+            "push": ([("list", "void"), ("val", "void")], "void"),
+            "pop": ([("list", "void")], "void"),
+            "range": ([("a", "int"), ("b", "int"), ("step", "int", 1)], "List<int>"),
+            "str": ([("x", "void")], "str"),
+            "int": ([("x", "void")], "int"),
+            "float": ([("x", "void")], "float"),
+            "bool": ([("x", "void")], "bool"),
+            "long": ([("x", "void")], "long"),
+            "sqrt": ([("x", "float")], "float"),
+            "abs": ([("x", "float")], "float"),
+            "pow": ([("x", "float"), ("y", "float")], "float"),
+            "sin": ([("x", "float")], "float"),
+            "cos": ([("x", "float")], "float"),
+            "tan": ([("x", "float")], "float"),
+            "floor": ([("x", "float")], "float"),
+            "ceil": ([("x", "float")], "float"),
+            "round": ([("x", "float")], "float"),
+            "log": ([("x", "float")], "float"),
+            "exp": ([("x", "float")], "float"),
+            "min": ([("a", "int"), ("b", "int")], "int"),
+            "max": ([("a", "int"), ("b", "int")], "int"),
+            "PI": ([], "float"),
+            "E": ([], "float"),
+            "asin": ([("x", "float")], "float"),
+            "acos": ([("x", "float")], "float"),
+            "atan": ([("x", "float")], "float"),
+            "atan2": ([("y", "float"), ("x", "float")], "float"),
+            "sinh": ([("x", "float")], "float"),
+            "cosh": ([("x", "float")], "float"),
+            "tanh": ([("x", "float")], "float"),
+            "_ox_randint": ([("min", "int"), ("max", "int")], "int"),
+            "_ox_randlong": ([("min", "long"), ("max", "long")], "long"),
+            "_ox_randfloat": ([], "float"),
+            "_ox_randseed": ([("seed", "int")], "void"),
+            "_ox_randbool": ([], "bool"),
+            "_ox_randbytes": ([("n", "int")], "str"),
+            # ── os / time / subprocess helpers (called by oxlib modules) ──
+            "_ox_getenv": ([("name", "str")], "str"),
+            "_ox_setenv": ([("name", "str"), ("value", "str")], "bool"),
+            "_ox_chdir": ([("path", "str")], "bool"),
+            "_ox_platform": ([], "str"),
+            "_ox_popen_out": ([("cmd", "str")], "str"),
+            "_ox_walk": ([("path", "str")], "List<str>"),
+            "_ox_time_epoch": ([], "float"),
+            "_ox_localtime": ([], "List<int>"),
+            "_ox_gmtime": ([], "List<int>"),
+            "_ox_sleep": ([("seconds", "float")], "void"),
+            "_ox_exit": ([("code", "int")], "void"),
+            "_ox_math_inf": ([], "float"),
+            "_ox_math_nan": ([], "float"),
+            "_ox_math_isnan": ([("x", "float")], "bool"),
+            "_ox_math_isinf": ([("x", "float")], "bool"),
+            "_ox_math_isfinite": ([("x", "float")], "bool"),
+            "contains": ([("list", "void"), ("x", "void")], "bool"),
+            "read_file": ([("path", "str")], "str"),
+            "read_lines": ([("path", "str")], "List<str>"),
+            "write_file": ([("path", "str"), ("contents", "str")], "void"),
+            "exec": ([("cmd", "str")], "int"),
+            "exit": ([("code", "int")], "void"),
+            "chr": ([("c", "int")], "str"),
+            "ord": ([("s", "str")], "int"),
+            "to_int": ([("s", "str")], "int"),
+            "to_float": ([("s", "str")], "float"),
+            "parse_int": ([("s", "str"), ("base", "int")], "int"),
+            "str_get": ([("s", "str"), ("i", "int")], "str"),
+            "str_sub": ([("s", "str"), ("start", "int"), ("end", "int")], "str"),
+            "str_contains": ([("s", "str"), ("sub", "str")], "bool"),
+            "args": ([], "List<str>"),
+            "is_digit": ([("c", "str")], "bool"),
+            "is_alpha": ([("c", "str")], "bool"),
+            "is_alnum": ([("c", "str")], "bool"),
+            "str_split": ([("s", "str"), ("delim", "str")], "List<str>"),
+            "str_trim": ([("s", "str")], "str"),
+            "str_trim_start": ([("s", "str")], "str"),
+            "str_trim_end": ([("s", "str")], "str"),
+            "str_replace": (
+                [("s", "str"), ("old_str", "str"), ("new_str", "str")],
+                "str",
+            ),
+            "str_replace_all": (
+                [("s", "str"), ("old_str", "str"), ("new_str", "str")],
+                "str",
+            ),
+            "str_join": ([("v", "List<str>"), ("delim", "str")], "str"),
+            "to_upper": ([("s", "str")], "str"),
+            "to_lower": ([("s", "str")], "str"),
+            "starts_with": ([("s", "str"), ("prefix", "str")], "bool"),
+            "ends_with": ([("s", "str"), ("suffix", "str")], "bool"),
+            "str_repeat": ([("s", "str"), ("n", "int")], "str"),
+            "str_reverse": ([("s", "str")], "str"),
+            "str_find": ([("s", "str"), ("sub", "str")], "Option<int>"),
+            "isinstance": ([("val", "void"), ("type_str", "str")], "bool"),
+            "zip": ([("a", "void"), ("b", "void")], "void"),
+            "map_contains": ([("m", "void"), ("k", "void")], "bool"),
+            "map_get": ([("m", "void"), ("k", "void")], "void"),
+            "map_set": ([("m", "void"), ("k", "void"), ("v", "void")], "void"),
+            "map_keys": ([("m", "void")], "void"),
+            "map_values": ([("m", "void")], "void"),
+            "map_items": ([("m", "void")], "void"),
+            "_ox_repeat": ([("v", "void"), ("n", "int")], "void"),
+            "list_insert": ([("v", "void"), ("i", "int"), ("x", "void")], "void"),
+            "list_remove": ([("v", "void"), ("i", "int")], "void"),
+            "_ox_count": ([("v", "void"), ("x", "void")], "int"),
+            "str_count": ([("s", "str"), ("sub", "str")], "int"),
+            "_ox_list_from_str": ([("s", "str")], "List<str>"),
+            "_ox_to_ndarray": ([("v", "void")], "NdArray"),
+            "fs_exists": ([("path", "str")], "bool"),
+            "fs_is_file": ([("path", "str")], "bool"),
+            "fs_is_dir": ([("path", "str")], "bool"),
+            "fs_mkdir": ([("path", "str")], "void"),
+            "fs_list_dir": ([("path", "str")], "List<str>"),
+            "fs_remove": ([("path", "str")], "void"),
+            "fs_rename": ([("old_path", "str"), ("new_path", "str")], "void"),
+            "fs_copy": ([("from", "str"), ("to", "str")], "void"),
+            "fs_cwd": ([], "str"),
+            "str_format": ([("fmt", "str"), ("args", "List<str>")], "str"),
+            "panic": ([("msg", "str")], "void"),
+            "assert": ([("cond", "bool")], "void"),
+            "eprint": ([("msg", "str")], "void"),
+            "eprintln": ([("msg", "str")], "void"),
+            "read_line": ([], "str"),
+            "append_file": ([("path", "str"), ("contents", "str")], "void"),
+            "temp_dir": ([], "str"),
+            "temp_file": ([], "str"),
             # ── math builtins (called by oxlib/math.ox) ──
-            '_ox_math_zeros': ([('n', 'int')], 'List<float>'),
-            '_ox_math_ones': ([('n', 'int')], 'List<float>'),
-            '_ox_math_linspace': ([('start', 'float'), ('end', 'float'), ('n', 'int')], 'List<float>'),
-            '_ox_math_arange': ([('start', 'float'), ('end', 'float'), ('step', 'float')], 'List<float>'),
-            '_ox_math_dot': ([('a', 'List<float>'), ('b', 'List<float>')], 'float'),
-            '_ox_math_matmul': ([('a', 'List<List<float>>'), ('b', 'List<List<float>>')], 'List<List<float>>'),
-            '_ox_math_transpose': ([('a', 'List<List<float>>')], 'List<List<float>>'),
-            '_ox_math_norm': ([('a', 'List<float>')], 'float'),
-            '_ox_math_inv': ([('a', 'List<List<float>>')], 'List<List<float>>'),
-            '_ox_math_det': ([('a', 'List<List<float>>')], 'float'),
-            '_ox_math_solve': ([('A', 'List<List<float>>'), ('b', 'List<float>')], 'List<float>'),
-            '_ox_math_sin': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_cos': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_tan': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_sqrt': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_abs': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_exp': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_log': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_floor': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_ceil': ([('a', 'List<float>')], 'List<float>'),
-            '_ox_math_add': ([('a', 'List<float>'), ('b', 'List<float>')], 'List<float>'),
-            '_ox_math_sub': ([('a', 'List<float>'), ('b', 'List<float>')], 'List<float>'),
-            '_ox_math_mul': ([('a', 'List<float>'), ('b', 'List<float>')], 'List<float>'),
-            '_ox_math_div': ([('a', 'List<float>'), ('b', 'List<float>')], 'List<float>'),
-            '_ox_math_sum': ([('a', 'List<float>')], 'float'),
-            '_ox_math_mean': ([('a', 'List<float>')], 'float'),
-            '_ox_math_min': ([('a', 'List<float>')], 'float'),
-            '_ox_math_max': ([('a', 'List<float>')], 'float'),
-            '_ox_math_reshape': ([('a', 'List<float>'), ('rows', 'int'), ('cols', 'int')], 'List<float>'),
+            "_ox_math_zeros": ([("n", "int")], "List<float>"),
+            "_ox_math_ones": ([("n", "int")], "List<float>"),
+            "_ox_math_linspace": (
+                [("start", "float"), ("end", "float"), ("n", "int")],
+                "List<float>",
+            ),
+            "_ox_math_arange": (
+                [("start", "float"), ("end", "float"), ("step", "float")],
+                "List<float>",
+            ),
+            "_ox_math_dot": ([("a", "List<float>"), ("b", "List<float>")], "float"),
+            "_ox_math_matmul": (
+                [("a", "List<List<float>>"), ("b", "List<List<float>>")],
+                "List<List<float>>",
+            ),
+            "_ox_math_transpose": ([("a", "List<List<float>>")], "List<List<float>>"),
+            "_ox_math_norm": ([("a", "List<float>")], "float"),
+            "_ox_math_inv": ([("a", "List<List<float>>")], "List<List<float>>"),
+            "_ox_math_det": ([("a", "List<List<float>>")], "float"),
+            "_ox_math_solve": (
+                [("A", "List<List<float>>"), ("b", "List<float>")],
+                "List<float>",
+            ),
+            "_ox_math_sin": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_cos": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_tan": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_sqrt": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_abs": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_exp": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_log": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_floor": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_ceil": ([("a", "List<float>")], "List<float>"),
+            "_ox_math_add": (
+                [("a", "List<float>"), ("b", "List<float>")],
+                "List<float>",
+            ),
+            "_ox_math_sub": (
+                [("a", "List<float>"), ("b", "List<float>")],
+                "List<float>",
+            ),
+            "_ox_math_mul": (
+                [("a", "List<float>"), ("b", "List<float>")],
+                "List<float>",
+            ),
+            "_ox_math_div": (
+                [("a", "List<float>"), ("b", "List<float>")],
+                "List<float>",
+            ),
+            "_ox_math_sum": ([("a", "List<float>")], "float"),
+            "_ox_math_mean": ([("a", "List<float>")], "float"),
+            "_ox_math_min": ([("a", "List<float>")], "float"),
+            "_ox_math_max": ([("a", "List<float>")], "float"),
+            "_ox_math_reshape": (
+                [("a", "List<float>"), ("rows", "int"), ("cols", "int")],
+                "List<float>",
+            ),
+            # ── scalar math aliases (called by oxlib/math.ox) ──
+            "_ox_fsqrt": ([("x", "float")], "float"),
+            "_ox_fpow": ([("x", "float"), ("y", "float")], "float"),
+            "_ox_fexp": ([("x", "float")], "float"),
+            "_ox_flog": ([("x", "float")], "float"),
+            "_ox_fsin": ([("x", "float")], "float"),
+            "_ox_fcos": ([("x", "float")], "float"),
+            "_ox_ftan": ([("x", "float")], "float"),
+            "_ox_fasin": ([("x", "float")], "float"),
+            "_ox_facos": ([("x", "float")], "float"),
+            "_ox_fatan": ([("x", "float")], "float"),
+            "_ox_fatan2": ([("y", "float"), ("x", "float")], "float"),
+            "_ox_fsinh": ([("x", "float")], "float"),
+            "_ox_fcosh": ([("x", "float")], "float"),
+            "_ox_ftanh": ([("x", "float")], "float"),
+            "_ox_fasinh": ([("x", "float")], "float"),
+            "_ox_facosh": ([("x", "float")], "float"),
+            "_ox_fatanh": ([("x", "float")], "float"),
+            "_ox_ffloor": ([("x", "float")], "float"),
+            "_ox_fceil": ([("x", "float")], "float"),
+            "_ox_fround": ([("x", "float")], "float"),
+            "_ox_fabs": ([("x", "float")], "float"),
+            "_ox_ferf": ([("x", "float")], "float"),
+            "_ox_ferfc": ([("x", "float")], "float"),
+            "_ox_fgamma": ([("x", "float")], "float"),
+            "_ox_flgamma": ([("x", "float")], "float"),
             # ── JSON builtins ──
-            'json_parse': ([('s', 'str')], 'JsonValue'),
-            'json_serialize': ([('v', 'JsonValue')], 'str'),
-            'json_pretty': ([('v', 'JsonValue'), ('indent', 'str')], 'str'),
-            'json_is_null': ([('v', 'JsonValue')], 'bool'),
-            'json_is_bool': ([('v', 'JsonValue')], 'bool'),
-            'json_is_int': ([('v', 'JsonValue')], 'bool'),
-            'json_is_float': ([('v', 'JsonValue')], 'bool'),
-            'json_is_str': ([('v', 'JsonValue')], 'bool'),
-            'json_is_list': ([('v', 'JsonValue')], 'bool'),
-            'json_is_dict': ([('v', 'JsonValue')], 'bool'),
-            'json_as_str': ([('v', 'JsonValue')], 'str'),
-            'json_as_int': ([('v', 'JsonValue')], 'int'),
-            'json_as_float': ([('v', 'JsonValue')], 'float'),
-            'json_as_bool': ([('v', 'JsonValue')], 'bool'),
-            'json_as_list': ([('v', 'JsonValue')], 'List<JsonValue>'),
-            'json_as_dict': ([('v', 'JsonValue')], 'Map<str, JsonValue>'),
-            'json_get': ([('v', 'JsonValue'), ('key', 'str')], 'Option<JsonValue>'),
-            'json_get_idx': ([('v', 'JsonValue'), ('i', 'int')], 'Option<JsonValue>'),
-            'json_keys': ([('v', 'JsonValue')], 'List<str>'),
-            'json_size': ([('v', 'JsonValue')], 'int'),
-            'json_contains': ([('v', 'JsonValue'), ('key', 'str')], 'bool'),
-            'json_push': ([('v', 'JsonValue'), ('val', 'JsonValue')], 'void'),
-            'json_set': ([('v', 'JsonValue'), ('key', 'str'), ('val', 'JsonValue')], 'void'),
-            'json_null': ([], 'JsonValue'),
-            'json_array': ([], 'JsonValue'),
-            'json_object': ([], 'JsonValue'),
-            'json_int': ([('i', 'int')], 'JsonValue'),
-            'json_float': ([('f', 'float')], 'JsonValue'),
-            'json_str': ([('s', 'str')], 'JsonValue'),
-            'json_bool': ([('b', 'bool')], 'JsonValue'),
+            "json_parse": ([("s", "str")], "JsonValue"),
+            "json_serialize": ([("v", "JsonValue")], "str"),
+            "json_pretty": ([("v", "JsonValue"), ("indent", "str")], "str"),
+            "json_is_null": ([("v", "JsonValue")], "bool"),
+            "json_is_bool": ([("v", "JsonValue")], "bool"),
+            "json_is_int": ([("v", "JsonValue")], "bool"),
+            "json_is_float": ([("v", "JsonValue")], "bool"),
+            "json_is_str": ([("v", "JsonValue")], "bool"),
+            "json_is_list": ([("v", "JsonValue")], "bool"),
+            "json_is_dict": ([("v", "JsonValue")], "bool"),
+            "json_as_str": ([("v", "JsonValue")], "str"),
+            "json_as_int": ([("v", "JsonValue")], "int"),
+            "json_as_float": ([("v", "JsonValue")], "float"),
+            "json_as_bool": ([("v", "JsonValue")], "bool"),
+            "json_as_list": ([("v", "JsonValue")], "List<JsonValue>"),
+            "json_as_dict": ([("v", "JsonValue")], "Map<str, JsonValue>"),
+            "json_get": ([("v", "JsonValue"), ("key", "str")], "Option<JsonValue>"),
+            "json_get_idx": ([("v", "JsonValue"), ("i", "int")], "Option<JsonValue>"),
+            "json_keys": ([("v", "JsonValue")], "List<str>"),
+            "json_size": ([("v", "JsonValue")], "int"),
+            "json_contains": ([("v", "JsonValue"), ("key", "str")], "bool"),
+            "json_push": ([("v", "JsonValue"), ("val", "JsonValue")], "void"),
+            "json_set": (
+                [("v", "JsonValue"), ("key", "str"), ("val", "JsonValue")],
+                "void",
+            ),
+            "json_null": ([], "JsonValue"),
+            "json_array": ([], "JsonValue"),
+            "json_object": ([], "JsonValue"),
+            "json_int": ([("i", "int")], "JsonValue"),
+            "json_float": ([("f", "float")], "JsonValue"),
+            "json_str": ([("s", "str")], "JsonValue"),
+            "json_bool": ([("b", "bool")], "JsonValue"),
             # ── datetime builtins (called by oxlib/datetime.ox) ──
-            '_ox_datetime_now': ([], 'str'),
-            '_ox_datetime_format': ([('dt', 'str'), ('fmt', 'str')], 'str'),
-            '_ox_datetime_parse': ([('s', 'str'), ('fmt', 'str')], 'str'),
-            '_ox_datetime_component': ([('dt', 'str'), ('which', 'int')], 'int'),
+            "_ox_datetime_now": ([], "str"),
+            "_ox_datetime_format": ([("dt", "str"), ("fmt", "str")], "str"),
+            "_ox_datetime_parse": ([("s", "str"), ("fmt", "str")], "str"),
+            "_ox_datetime_component": ([("dt", "str"), ("which", "int")], "int"),
+            # ── timeit builtins ──
+            "_ox_perf_counter": ([], "float"),
+            "_ox_timeit": ([("stmt", "void"), ("number", "int")], "float"),
+            "_ox_timeit_setup": ([("setup", "void"), ("stmt", "void"), ("number", "int")], "float"),
             # ── regex builtins (called by oxlib/regex.ox) ──
-            '_ox_regex_match': ([('pattern', 'str'), ('s', 'str')], 'bool'),
-            '_ox_regex_search': ([('pattern', 'str'), ('s', 'str')], 'bool'),
-            '_ox_regex_find': ([('pattern', 'str'), ('s', 'str')], 'Option<str>'),
-            '_ox_regex_find_all': ([('pattern', 'str'), ('s', 'str')], 'List<str>'),
-            '_ox_regex_replace': ([('pattern', 'str'), ('s', 'str'), ('replacement', 'str')], 'str'),
-            '_ox_regex_split': ([('pattern', 'str'), ('s', 'str')], 'List<str>'),
+            "_ox_regex_match": ([("pattern", "str"), ("s", "str")], "bool"),
+            "_ox_regex_search": ([("pattern", "str"), ("s", "str")], "bool"),
+            "_ox_regex_find": ([("pattern", "str"), ("s", "str")], "Option<str>"),
+            "_ox_regex_find_all": ([("pattern", "str"), ("s", "str")], "List<str>"),
+            "_ox_regex_compile": ([("pattern", "str")], "Regex"),
+            "_ox_regex_groups": ([("pattern", "str"), ("s", "str")], "List<List<str>>"),
+            "_ox_regex_groups_re": ([("re", "Regex"), ("s", "str")], "List<List<str>>"),
+            "_ox_regex_groups_iter": (
+                [("pattern", "str"), ("s", "str")],
+                "Generator<List<str>>",
+            ),
+            "_ox_regex_groups_iter_re": (
+                [("re", "Regex"), ("s", "str")],
+                "Generator<List<str>>",
+            ),
+            "_ox_regex_replace": (
+                [("pattern", "str"), ("s", "str"), ("replacement", "str")],
+                "str",
+            ),
+            "_ox_regex_split": ([("pattern", "str"), ("s", "str")], "List<str>"),
+            # ── HTTP builtins (called by oxlib/http.ox) ──
+            "_ox_http_request": (
+                [("method", "str"), ("url", "str"), ("headers", "str"), ("body", "str"), ("timeout", "int")],
+                "str",
+            ),
+            "_ox_http_headers_to_json": ([("headers", "void")], "str"),
         }
         for name, (params, ret) in builtin_fns.items():
             self.fns[name] = (params, ret, None)
@@ -3498,11 +4917,13 @@ class TypeChecker:
             return
         unused = set(self.vars[-1]) - self._used[-1]
         for var in unused:
-            if not var.startswith('_'):
+            if not var.startswith("_"):
                 sp = self.spans.get(id(self.vars[-1].get(var)))
-                self.diags.append(Diagnostic(
-                    Severity.WARNING, f"unused variable `{var}`",
-                    sp, code='W0001'))
+                self.diags.append(
+                    Diagnostic(
+                        Severity.WARNING, f"unused variable `{var}`", sp, code="W0001"
+                    )
+                )
         self.vars.pop()
         self._used.pop()
 
@@ -3518,46 +4939,56 @@ class TypeChecker:
             return
         if name in self.vars[-1]:
             sp = self.spans.get(id(node))
-            self.diags.append(Diagnostic(
-                Severity.ERROR, f"variable `{name}` already declared in this scope",
-                sp, code='E0002'))
+            self.diags.append(
+                Diagnostic(
+                    Severity.ERROR,
+                    f"variable `{name}` already declared in this scope",
+                    sp,
+                    code="E0002",
+                )
+            )
             return
         for i in range(len(self.vars) - 2, -1, -1):
             if name in self.vars[i]:
                 sp = self.spans.get(id(node))
-                self.diags.append(Diagnostic(
-                    Severity.WARNING, f"variable `{name}` shadows outer declaration",
-                    sp, code='W0002'))
+                self.diags.append(
+                    Diagnostic(
+                        Severity.WARNING,
+                        f"variable `{name}` shadows outer declaration",
+                        sp,
+                        code="W0002",
+                    )
+                )
                 break
         self.vars[-1][name] = ty
 
-    def _error(self, msg: str, node, code: str = '', notes=None):
+    def _error(self, msg: str, node, code: str = "", notes=None):
         sp = self.spans.get(id(node))
         d = Diagnostic(Severity.ERROR, msg, sp, code=code)
         if notes:
             d.notes = notes
         self.diags.append(d)
 
-    def _type_error(self, expected: str, found: str, node, detail: str = ''):
+    def _type_error(self, expected: str, found: str, node, detail: str = ""):
         sp = self.spans.get(id(node))
         msg = f"expected `{expected}`, found `{found}`"
         notes = []
         if detail:
             notes.append((detail, None))
-        self.diags.append(Diagnostic(
-            Severity.ERROR, msg, sp, code='E0308', notes=notes
-        ))
+        self.diags.append(
+            Diagnostic(Severity.ERROR, msg, sp, code="E0308", notes=notes)
+        )
 
     def _split_tuple_types(self, inner: str) -> PyList[str]:
-        parts, depth, cur = [], 0, ''
+        parts, depth, cur = [], 0, ""
         for c in inner:
-            if c in '(<[':
+            if c in "(<[":
                 depth += 1
-            elif c in ')>]':
+            elif c in ")>]":
                 depth -= 1
-            if c == ',' and depth == 0:
+            if c == "," and depth == 0:
                 parts.append(cur.strip())
-                cur = ''
+                cur = ""
             else:
                 cur += c
         if cur.strip():
@@ -3587,132 +5018,205 @@ class TypeChecker:
 
     def _infer_type_impl(self, node) -> str:
         if isinstance(node, IntLit):
-            return 'int'
+            return "int"
         if isinstance(node, FloatLit):
-            return 'float'
+            return "float"
         if isinstance(node, StrLit):
-            return 'str'
+            return "str"
         if isinstance(node, BoolLit):
-            return 'bool'
+            return "bool"
         if isinstance(node, NoneLit):
-            return 'Option<void>'
+            return "Option<void>"
         if isinstance(node, SomeLit):
             inner = self._infer_type(node.value)
-            return f'Option<{inner}>'
+            return f"Option<{inner}>"
         if isinstance(node, ListLit):
             elem_types = [self._infer_type(e) for e in node.elems]
-            return f'List<{elem_types[0]}>' if elem_types else 'List<void>'
+            return f"List<{elem_types[0]}>" if elem_types else "List<void>"
         if isinstance(node, WildCard):
-            return '_'
+            return "_"
         if isinstance(node, Ident):
-            if node.name in ('true', 'false'):
-                return 'bool'
-            if node.name in ('PI', 'E'):
-                return 'float'
-            if node.name == 'self':
+            if node.name in ("true", "false"):
+                return "bool"
+            if node.name in ("PI", "E"):
+                return "float"
+            if node.name == "self":
                 if self.in_class:
                     return self.in_class
-                self._error("`self` is only valid inside class methods", node, 'E0401')
-                return 'void'
+                self._error("`self` is only valid inside class methods", node, "E0401")
+                return "void"
             ty = self._lookup_var(node.name)
             if ty is not None:
                 return ty
             if node.name in self.fns:
-                return 'fn'
+                return "fn"
             if node.name in self.classes:
-                return 'type'
-            self._error(f"cannot find value `{node.name}` in this scope", node, 'E0425')
-            return 'void'
+                return "type"
+            self._error(f"cannot find value `{node.name}` in this scope", node, "E0425")
+            return "void"
         if isinstance(node, BinOp):
             lt = self._infer_type(node.left)
             rt = self._infer_type(node.right)
             op = node.op
-            if op in ('==', '!=', '<', '>', '<=', '>=', 'and', 'or', 'in'):
-                if op in ('and', 'or') and lt == 'bool' and rt == 'bool':
-                    return 'bool'
-                if op == 'in':
-                    return 'bool'
-                if op in ('==', '!='):
-                    return 'bool'
-                if op in ('<', '>', '<=', '>='):
-                    if lt in ('int', 'float') and rt in ('int', 'float'):
-                        return 'bool'
-                    self._type_error('int|float', rt, node.right)
-                    return 'bool'
-                return 'bool'
-            if op in ('+', '-', '*', '/', '%'):
-                if lt in ('int', 'float') and rt in ('int', 'float'):
-                    return lt if lt == rt else 'float'
-                if lt == 'str' and op == '+':
-                    return 'str'
+            if op in ("==", "!=", "<", ">", "<=", ">=", "and", "or", "in"):
+                if op in ("and", "or") and lt == "bool" and rt == "bool":
+                    return "bool"
+                if op == "in":
+                    return "bool"
+                if op in ("==", "!="):
+                    return "bool"
+                if op in ("<", ">", "<=", ">="):
+                    if lt in ("int", "float", "long") and rt in ("int", "float", "long"):
+                        return "bool"
+                    self._type_error("int|float|long", rt, node.right)
+                    return "bool"
+                return "bool"
+            if op in ("+", "-", "*", "/", "%"):
+                if lt in ("int", "float", "long") and rt in ("int", "float", "long"):
+                    if "float" in (lt, rt):
+                        return "float"
+                    if "long" in (lt, rt):
+                        return "long"
+                    return "int"
+                if lt == "str" and op == "+":
+                    return "str"
+                # List repetition: [0] * 5  or 5 * [0]
+                lbase = _base_type(lt)
+                rbase = _base_type(rt)
+                if (
+                    op == "*"
+                    and (lbase == "List" or rbase == "List")
+                    and (
+                        lt in ("int", "float", "bool", "str", "void", "long")
+                        or rt in ("int", "float", "bool", "str", "void", "long")
+                    )
+                ):
+                    if lbase == "List":
+                        return lt
+                    else:
+                        return rt
                 # Check operator overloading for class types
-                op_methods = {'+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div', '%': 'op_mod'}
+                op_methods = {
+                    "+": "op_add",
+                    "-": "op_sub",
+                    "*": "op_mul",
+                    "/": "op_div",
+                    "%": "op_mod",
+                }
                 if op in op_methods:
                     method_name = op_methods[op]
-                    lbase = _base_type(lt)
                     if lbase in self.classes:
                         cls = self.classes[lbase]
                         for m in cls.methods:
                             if m.name == method_name:
                                 return m.return_type
-                self._type_error('int|float|str', f'{lt} {op} {rt}', node)
+                self._type_error("int|float|long|str", f"{lt} {op} {rt}", node)
                 return lt
-            return 'void'
+            return "void"
         if isinstance(node, UnaryOp):
             operand_t = self._infer_type(node.operand)
-            if node.op == '-':
-                if operand_t in ('int', 'float'):
+            if node.op == "-":
+                if operand_t in ("int", "float", "long"):
                     return operand_t
-                self._type_error('int|float', operand_t, node)
+                self._type_error("int|float|long", operand_t, node)
             return operand_t
         if isinstance(node, FnCall):
             fn_expr = node.func
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'Ok':
+            if isinstance(fn_expr, Ident) and fn_expr.name == "Ok":
                 inner = self._infer_type(node.args[0])
-                return f'Result<{inner}, void>'
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'Err':
+                return f"Result<{inner}, void>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "Err":
                 inner = self._infer_type(node.args[0])
-                return f'Result<void, {inner}>'
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'list':
+                return f"Result<void, {inner}>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "list":
                 for a in node.args:
                     self._infer_type(a)
-                return 'List<str>'
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'sorted':
+                return "List<str>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "sorted":
                 if node.args:
                     arg_t = self._infer_type(node.args[0])
                     base = _base_type(arg_t)
-                    if base == 'List':
+                    if base == "List":
                         return arg_t
-                    if base == 'str':
-                        return 'List<str>'
-                    if arg_t.startswith('('):
+                    if base == "str":
+                        return "List<str>"
+                    if arg_t.startswith("("):
                         inner = arg_t[1:-1]
                         elem_types = self._split_tuple_types(inner)
-                        elem = elem_types[0] if elem_types else 'void'
-                        return f'List<{elem}>'
-                return 'List<void>'
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'enumerate':
+                        elem = elem_types[0] if elem_types else "void"
+                        return f"List<{elem}>"
+                return "List<void>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "zip":
+                if node.args and len(node.args) >= 2:
+                    at = self._infer_type(node.args[0])
+                    bt = self._infer_type(node.args[1])
+                    abase = _base_type(at)
+                    bbase = _base_type(bt)
+                    aelem = (
+                        _type_params(at)[0]
+                        if abase == "List" and _type_params(at)
+                        else "void"
+                    )
+                    belem = (
+                        _type_params(bt)[0]
+                        if bbase == "List" and _type_params(bt)
+                        else "void"
+                    )
+                    return f"List<({aelem}, {belem})>"
+                return "List<(void, void)>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "isinstance":
+                for a in node.args:
+                    self._infer_type(a)
+                return "bool"
+            if isinstance(fn_expr, Ident) and fn_expr.name in (
+                "map_keys",
+                "map_values",
+                "map_items",
+                "map_get",
+                "map_contains",
+            ):
+                if node.args:
+                    arg_t = self._infer_type(node.args[0])
+                    params = _type_params(arg_t)
+                    if fn_expr.name == "map_keys":
+                        return f"List<{params[0] if params else 'void'}>"
+                    if fn_expr.name == "map_values":
+                        return f"List<{params[1] if params else 'void'}>"
+                    if fn_expr.name == "map_items":
+                        kt = params[0] if params else "void"
+                        vt = params[1] if params else "void"
+                        return f"List<({kt}, {vt})>"
+                    if fn_expr.name == "map_get":
+                        return params[1] if params and len(params) > 1 else "void"
+                    if fn_expr.name == "map_contains":
+                        return "bool"
+                if fn_expr.name == "map_get":
+                    return "void"
+                if fn_expr.name == "map_contains":
+                    return "bool"
+                return "List<void>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "enumerate":
                 if node.args:
                     arg_t = self._infer_type(node.args[0])
                     base = _base_type(arg_t)
-                    if base == 'List':
+                    if base == "List":
                         params = _type_params(arg_t)
-                        elem = params[0] if params else 'void'
-                        return f'List<(int, {elem})>'
-                    if base == 'str':
-                        return 'List<(int, str)>'
-                return 'List<(int, void)>'
-            if isinstance(fn_expr, Ident) and fn_expr.name == 'batched':
+                        elem = params[0] if params else "void"
+                        return f"List<(int, {elem})>"
+                    if base == "str":
+                        return "List<(int, str)>"
+                return "List<(int, void)>"
+            if isinstance(fn_expr, Ident) and fn_expr.name == "batched":
                 if node.args:
                     arg_t = self._infer_type(node.args[0])
                     base = _base_type(arg_t)
-                    if base == 'List':
+                    if base == "List":
                         params = _type_params(arg_t)
-                        elem = params[0] if params else 'void'
-                        return f'List<List<{elem}>>'
-                    if base == 'str':
-                        return 'List<List<str>>'
-                return 'List<void>'
+                        elem = params[0] if params else "void"
+                        return f"List<List<{elem}>>"
+                    if base == "str":
+                        return "List<List<str>>"
+                return "List<void>"
             if isinstance(fn_expr, Ident) and fn_expr.name in self.fns:
                 fn_name = fn_expr.name
                 params, ret, fn_node = self.fns[fn_name]
@@ -3720,52 +5224,84 @@ class TypeChecker:
                 if fn_node:
                     for g in fn_node.generics:
                         self.generic_params.add(g)
-                if fn_name == 'print':
+                if fn_name == "print":
                     for arg in node.args:
                         self._infer_type(arg)
                     self.generic_params = old_generic
-                    return 'void'  # print accepts any type
-                if fn_name == 'assert':
+                    return "void"  # print accepts any type
+                if fn_name == "assert":
                     if len(node.args) < 1 or len(node.args) > 2:
                         self._error(
                             f"function `assert` takes 1-2 arguments but {len(node.args)} were given",
-                            node, 'E0060',
+                            node,
+                            "E0060",
                         )
                     else:
                         self._infer_type(node.args[0])
-                        if node.args[0] and not self._is_compatible('bool', self._infer_type(node.args[0])):
-                            self._type_error('bool', self._infer_type(node.args[0]), node.args[0])
+                        if node.args[0] and not self._is_compatible(
+                            "bool", self._infer_type(node.args[0])
+                        ):
+                            self._type_error(
+                                "bool", self._infer_type(node.args[0]), node.args[0]
+                            )
                         if len(node.args) == 2:
                             self._infer_type(node.args[1])
-                            if node.args[1] and not self._is_compatible('str', self._infer_type(node.args[1])):
-                                self._type_error('str', self._infer_type(node.args[1]), node.args[1])
+                            if node.args[1] and not self._is_compatible(
+                                "str", self._infer_type(node.args[1])
+                            ):
+                                self._type_error(
+                                    "str", self._infer_type(node.args[1]), node.args[1]
+                                )
                     self.generic_params = old_generic
-                    return 'void'
+                    return "void"
+                if fn_name == "abs":
+                    if len(node.args) != 1:
+                        self._error(
+                            f"function `abs` takes 1 argument but {len(node.args)} were given",
+                            node,
+                            "E0060",
+                        )
+                        self.generic_params = old_generic
+                        return "float"
+                    arg_t = self._infer_type(node.args[0])
+                    if arg_t in ("int", "long", "float"):
+                        self.generic_params = old_generic
+                        return arg_t
+                    self._type_error("int|long|float", arg_t, node.args[0])
+                    self.generic_params = old_generic
+                    return "float"
                 # Count required params (handles both 3-element old format and 4-element with defaults)
-                min_args = sum(1 for p in params if len(p) < 4 or p[2] is None)
+                min_args = sum(1 for p in params if len(p) < 3)
                 if len(node.args) > len(params) or len(node.args) < min_args:
                     self._error(
                         f"function `{fn_name}` takes {len(params)} arguments ({min_args}-{len(params)}) but {len(node.args)} were given",
-                        node, 'E0060',
+                        node,
+                        "E0060",
                     )
                     self.generic_params = old_generic
                     return ret
                 for i, (arg, p) in enumerate(zip(node.args, params)):
                     pname, ptype = p[0], p[1]
                     arg_t = self._infer_type(arg)
-                    if ptype == 'void':
+                    if ptype == "void":
                         continue
                     if arg_t != ptype and not self._is_compatible(arg_t, ptype):
-                        self._type_error(ptype, arg_t, arg,
-                                         f"argument `{pname}` to `{fn_name}`")
+                        self._type_error(
+                            ptype, arg_t, arg, f"argument `{pname}` to `{fn_name}`"
+                        )
                 self.generic_params = old_generic
                 return ret
-            if isinstance(fn_expr, Ident) and _base_type(fn_expr.name) in _CONTAINER_TYPES:
+            if (
+                isinstance(fn_expr, Ident)
+                and _base_type(fn_expr.name) in _CONTAINER_TYPES
+            ):
                 return fn_expr.name
-            for arg in node.args:
-                self._infer_type(arg)
+            arg_types = [self._infer_type(a) for a in node.args]
             fn_t = self._infer_type(fn_expr)
-            return 'void'
+            if isinstance(fn_expr, Ident) and fn_t != "void" and arg_types:
+                # Callable passed via generic param (fn ref): result is first arg type
+                return arg_types[0]
+            return "void"
         if isinstance(node, MethodCall):
             if isinstance(node.obj, Ident) and node.obj.name in self.modules:
                 mod_name = node.obj.name
@@ -3781,16 +5317,27 @@ class TypeChecker:
                     if len(node.args) != len(params):
                         self._error(
                             f"function `{base_name}` in module `{mod_name}` takes {len(params)} argument{'s' if len(params) != 1 else ''} but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
-                            node, 'E0060')
+                            node,
+                            "E0060",
+                        )
                     for i, (arg, p) in enumerate(zip(node.args, params)):
                         pname, ptype = p[0], p[1]
                         arg_t = self._infer_type(arg)
-                        if ptype != 'void' and not self._is_compatible(arg_t, ptype):
-                            self._type_error(ptype, arg_t, arg, f"argument `{pname}` to `{mod_name}.{base_name}`")
+                        if ptype != "void" and not self._is_compatible(arg_t, ptype):
+                            self._type_error(
+                                ptype,
+                                arg_t,
+                                arg,
+                                f"argument `{pname}` to `{mod_name}.{base_name}`",
+                            )
                     self.generic_params = old_generic
                     return ret
-                self._error(f"no function named `{base_name}` in module `{mod_name}`", node, 'E0599')
-                return 'void'
+                self._error(
+                    f"no function named `{base_name}` in module `{mod_name}`",
+                    node,
+                    "E0599",
+                )
+                return "void"
             obj_t = self._infer_type(node.obj)
             for arg in node.args:
                 self._infer_type(arg)
@@ -3800,102 +5347,134 @@ class TypeChecker:
                 for m in cls.methods:
                     if m.name == node.name:
                         total = len(m.params)
-                        min_args = sum(1 for p in m.params if len(p) < 4 or p[2] is None)
+                        min_args = sum(
+                            1 for p in m.params if len(p) < 4 or p[2] is None
+                        )
                         if len(node.args) > total or len(node.args) < min_args:
                             self._error(
                                 f"method `{node.name}` takes {total} argument{'s' if total != 1 else ''} ({min_args}-{total}) but {len(node.args)} {'were' if len(node.args) != 1 else 'was'} given",
-                                node, 'E0060')
+                                node,
+                                "E0060",
+                            )
                         return m.return_type
-                self._error(f"no method named `{node.name}` found in class `{base}`", node, 'E0599')
+                self._error(
+                    f"no method named `{node.name}` found in class `{base}`",
+                    node,
+                    "E0599",
+                )
             # Built-in list chaining methods
-            if base == 'List':
+            if base == "List":
                 params = _type_params(obj_t)
-                elem_type = params[0] if params else 'void'
-                if node.name == 'map':
+                elem_type = params[0] if params else "void"
+                if node.name == "map":
                     for a in node.args:
                         if isinstance(a, Ident) and a.name in self.fns:
                             _, ret, _ = self.fns[a.name]
-                            return f'List<{ret}>'
+                            return f"List<{ret}>"
                         if isinstance(a, Attr) and isinstance(a.obj, Ident):
                             cls_name = a.obj.name
                             if cls_name in self.classes:
                                 cls = self.classes[cls_name]
                                 for m in cls.methods:
                                     if m.name == a.name:
-                                        return f'List<{m.return_type}>'
-                    return f'List<{elem_type}>'
-                if node.name == 'filter':
-                    return f'List<{elem_type}>'
-                if node.name == 'reduce':
+                                        return f"List<{m.return_type}>"
+                    return f"List<{elem_type}>"
+                if node.name == "filter":
+                    return f"List<{elem_type}>"
+                if node.name == "reduce":
                     if node.args:
                         return self._infer_type(node.args[0])
                     return elem_type
-                if node.name in ('for_each', 'each'):
-                    return 'void'
-                if node.name in ('any', 'all'):
-                    return 'bool'
-                if node.name == 'find':
-                    return f'Option<{elem_type}>'
-                if node.name in ('sum', 'min', 'max'):
+                if node.name in ("for_each", "each"):
+                    return "void"
+                if node.name in ("any", "all"):
+                    return "bool"
+                if node.name == "find":
+                    return f"Option<{elem_type}>"
+                if node.name in ("sum", "min", "max"):
                     return elem_type
-                if node.name in ('combinations', 'permutations', 'chunked', 'batched', 'windowed', 'pairwise'):
-                    return f'List<List<{elem_type}>>'
-                if node.name in ('reversed', 'cycle'):
-                    return f'List<{elem_type}>'
-                if node.name in ('take_while', 'drop_while'):
-                    return f'List<{elem_type}>'
-                if node.name == 'length':
-                    return 'int'
-                if node.name == 'contains':
-                    return 'bool'
-                if node.name == 'count':
-                    return 'int'
-                return 'void'
+                if node.name in (
+                    "combinations",
+                    "permutations",
+                    "chunked",
+                    "batched",
+                    "windowed",
+                    "pairwise",
+                ):
+                    return f"List<List<{elem_type}>>"
+                if node.name in ("reversed", "cycle"):
+                    return f"List<{elem_type}>"
+                if node.name in ("take_while", "drop_while"):
+                    return f"List<{elem_type}>"
+                if node.name == "length":
+                    return "int"
+                if node.name == "contains":
+                    return "bool"
+                if node.name == "count":
+                    return "int"
+                if node.name == "join":
+                    return "str"
+                return "void"
             # Built-in str methods
-            if base == 'str':
-                if node.name == 'length':
-                    return 'int'
-                if node.name in ('contains', 'starts_with', 'ends_with'):
-                    return 'bool'
-                if node.name == 'count':
-                    return 'int'
-                if node.name == 'find':
-                    return 'Option<int>'
-                if node.name in ('to_upper', 'to_lower', 'reverse', 'replace'):
-                    return 'str'
-                if node.name == 'batched':
-                    return 'List<List<str>>'
-                return 'void'
-            return 'void'
+            if base == "str":
+                if node.name == "length":
+                    return "int"
+                if node.name in ("contains", "starts_with", "ends_with"):
+                    return "bool"
+                if node.name == "count":
+                    return "int"
+                if node.name == "find":
+                    return "Option<int>"
+                if node.name in ("to_upper", "to_lower", "reverse", "replace"):
+                    return "str"
+                if node.name == "batched":
+                    return "List<List<str>>"
+                return "void"
+            return "void"
         if isinstance(node, VarDecl):
             if node.type_ann:
                 return node.type_ann
             if node.value is not None:
                 return self._infer_type(node.value)
-            return 'void'
+            return "void"
         if isinstance(node, TryOp):
             inner = self._infer_type(node.value)
             base = _base_type(inner)
-            if base == 'Result':
+            if base == "Result":
                 params = _type_params(inner)
-                return params[0] if params else 'void'
-            if base == 'Option':
+                return params[0] if params else "void"
+            if base == "Option":
                 params = _type_params(inner)
-                return params[0] if params else 'void'
-            self._type_error('Result or Option', inner, node)
-            return 'void'
+                return params[0] if params else "void"
+            self._type_error("Result or Option", inner, node)
+            return "void"
         if isinstance(node, Attr):
+            if isinstance(node.obj, Ident) and node.obj.name in self.module_consts:
+                consts = self.module_consts[node.obj.name]
+                if node.name in consts:
+                    return consts[node.name]
+                if node.obj.name not in self.modules:
+                    self._error(
+                        f"no constant named `{node.name}` in module `{node.obj.name}`",
+                        node,
+                        "E0560",
+                    )
+                    return "void"
             obj_t = self._infer_type(node.obj)
             base = _base_type(obj_t)
-            if obj_t.startswith('(') and node.name.isdigit():
+            if obj_t.startswith("(") and node.name.isdigit():
                 # Tuple element access: t.0, t.1, etc.
                 inner = obj_t[1:-1]
                 elems = self._split_tuple_types(inner)
                 idx = int(node.name)
                 if 0 <= idx < len(elems):
                     return elems[idx]
-                self._error(f"tuple index {idx} out of range (has {len(elems)} elements)", node, 'E0560')
-                return 'void'
+                self._error(
+                    f"tuple index {idx} out of range (has {len(elems)} elements)",
+                    node,
+                    "E0560",
+                )
+                return "void"
             if base in self.classes:
                 cls = self.classes[base]
                 for fn, ft in cls.fields:
@@ -3904,44 +5483,46 @@ class TypeChecker:
                 for m in cls.methods:
                     if m.name == node.name:
                         return m.return_type
-                self._error(f"no field named `{node.name}` on class `{base}`", node, 'E0560')
-                return 'void'
-            if base == 'Option' and node.name == 'value':
+                self._error(
+                    f"no field named `{node.name}` on class `{base}`", node, "E0560"
+                )
+                return "void"
+            if base == "Option" and node.name == "value":
                 params = _type_params(obj_t)
-                return params[0] if params else 'void'
-            return 'void'
+                return params[0] if params else "void"
+            return "void"
         if isinstance(node, Index):
             obj_t = self._infer_type(node.obj)
             base = _base_type(obj_t)
             if isinstance(node.idx, SliceLit):
-                if base == 'List':
+                if base == "List":
                     return obj_t
-                if base == 'str':
-                    return 'str'
+                if base == "str":
+                    return "str"
                 if base in self.classes:
                     cls = self.classes[base]
                     for m in cls.methods:
-                        if m.name == 'op_slice':
+                        if m.name == "op_slice":
                             return m.return_type
-                return 'void'
+                return "void"
             self._infer_type(node.idx)
-            if base == 'List':
+            if base == "List":
                 params = _type_params(obj_t)
-                return params[0] if params else 'void'
-            if base == 'str':
-                return 'str'
-            if base == 'Map':
+                return params[0] if params else "void"
+            if base == "str":
+                return "str"
+            if base == "Map":
                 params = _type_params(obj_t)
-                return params[1] if len(params) > 1 else 'void'
+                return params[1] if len(params) > 1 else "void"
             if base in self.classes:
                 cls = self.classes[base]
                 for m in cls.methods:
-                    if m.name == 'op_index':
+                    if m.name == "op_index":
                         return m.return_type
             if base and base not in _PRIMITIVE_TYPES and base not in _CONTAINER_TYPES:
-                return 'void'
-            self._type_error('List|str|Map', obj_t, node.obj)
-            return 'void'
+                return "void"
+            self._type_error("List|str|Map", obj_t, node.obj)
+            return "void"
         if isinstance(node, StructLit):
             base = _base_type(node.type_name)
             if base in self.classes:
@@ -3954,27 +5535,27 @@ class TypeChecker:
                 return node.type_name
             for _, fv in node.fields:
                 self._infer_type(fv)
-            self._error(f"no class named `{node.type_name}`", node, 'E0412')
+            self._error(f"no class named `{node.type_name}`", node, "E0412")
             return node.type_name
         if isinstance(node, TupleLit):
             elem_types = [self._infer_type(e) for e in node.elems]
             return f"({', '.join(elem_types)})"
         if isinstance(node, LambdaExpr):
-            return 'void'
+            return "void"
         if isinstance(node, TernaryExpr):
             ct = self._infer_type(node.cond)
-            if ct != 'bool':
-                self._error(f"expected bool cond, got `{ct}`", node.cond, 'E0020')
+            if ct != "bool":
+                self._error(f"expected bool cond, got `{ct}`", node.cond, "E0020")
             tt = self._infer_type(node.then_expr)
             ec = self._infer_type(node.else_expr)
             if not self._is_compatible(tt, ec):
                 self._type_error(tt, ec, node.else_expr)
             return tt
         if isinstance(node, RangeLit):
-            return 'List<int>'
+            return "List<int>"
         if isinstance(node, SliceLit):
-            return 'void'
-        return 'void'
+            return "void"
+        return "void"
 
     def _is_compatible(self, found: str, expected: str) -> bool:
         if found == expected:
@@ -3985,47 +5566,51 @@ class TypeChecker:
         base_e = _base_type(expected)
         if base_f == base_e:
             return True
-        if expected == 'float' and found == 'int':
+        if expected == "float" and found in ("int", "long"):
             return True
-        if expected.startswith('Option<') and found == 'Option<void>':
+        if expected == "long" and found == "int":
+            return True
+        if expected == "int" and found == "long":
+            return True
+        if expected.startswith("Option<") and found == "Option<void>":
             return True
         return False
 
     def _check_stmt(self, node) -> None:
         if self._unreachable and not isinstance(node, (FnDef, ClassDef)):
             sp = self.spans.get(id(node))
-            self.diags.append(Diagnostic(
-                Severity.WARNING, "unreachable statement",
-                sp, code='W0003'))
+            self.diags.append(
+                Diagnostic(Severity.WARNING, "unreachable statement", sp, code="W0003")
+            )
         if isinstance(node, VarDecl):
-            if hasattr(node, '_destructure_vars'):
+            if hasattr(node, "_destructure_vars"):
                 # Tuple destructuring: let (a, b, c) = expr
                 val_t = self._infer_type(node.value)
                 if node.type_ann:
                     if not self._is_compatible(val_t, node.type_ann):
                         self._type_error(node.type_ann, val_t, node.value)
-                    if node.type_ann.startswith('('):
+                    if node.type_ann.startswith("("):
                         inner = node.type_ann[1:-1]
                         ann_types = self._split_tuple_types(inner)
                         for i, vn in enumerate(node._destructure_vars):
                             if i < len(ann_types):
                                 self._declare_var(vn, ann_types[i], node)
                             else:
-                                self._declare_var(vn, 'void', node)
+                                self._declare_var(vn, "void", node)
                     else:
                         for vn in node._destructure_vars:
-                            self._declare_var(vn, 'void', node)
-                elif val_t.startswith('('):
+                            self._declare_var(vn, "void", node)
+                elif val_t.startswith("("):
                     inner = val_t[1:-1]
                     elem_types = self._split_tuple_types(inner)
                     for i, vn in enumerate(node._destructure_vars):
                         if i < len(elem_types):
                             self._declare_var(vn, elem_types[i], node)
                         else:
-                            self._declare_var(vn, 'void', node)
+                            self._declare_var(vn, "void", node)
                 else:
                     for vn in node._destructure_vars:
-                        self._declare_var(vn, 'void', node)
+                        self._declare_var(vn, "void", node)
                 return
             val_t = self._infer_type(node.value)
             resolved = node.type_ann or val_t
@@ -4038,7 +5623,7 @@ class TypeChecker:
                     node.value._type = node.type_ann
             else:
                 self._declare_var(node.name, val_t, node)
-            if hasattr(node, 'name_node'):
+            if hasattr(node, "name_node"):
                 node.name_node._type = resolved
         elif isinstance(node, Assignment):
             target_t = self._infer_type(node.target)
@@ -4053,10 +5638,14 @@ class TypeChecker:
                 val_t = self._infer_type(node.value)
                 if self.in_fn_ret and not self._is_compatible(val_t, self.in_fn_ret):
                     self._type_error(self.in_fn_ret, val_t, node.value)
-                if isinstance(node.value, ListLit) and not node.value.elems and self.in_fn_ret:
+                if (
+                    isinstance(node.value, ListLit)
+                    and not node.value.elems
+                    and self.in_fn_ret
+                ):
                     node.value._type = self.in_fn_ret
-            elif self.in_fn_ret and self.in_fn_ret != 'void':
-                self._error(f"expected `{self.in_fn_ret}` return value", node, 'E0057')
+            elif self.in_fn_ret and self.in_fn_ret != "void":
+                self._error(f"expected `{self.in_fn_ret}` return value", node, "E0057")
             self._unreachable = True
         elif isinstance(node, IfStmt):
             self._infer_type(node.cond)
@@ -4085,24 +5674,24 @@ class TypeChecker:
             self._unreachable = False
             self._push_scope()
             if isinstance(node.iterable, RangeLit):
-                var_type = 'int'
+                var_type = "int"
             elif _base_type(iter_t) in _CONTAINER_TYPES:
                 params = _type_params(iter_t)
-                var_type = params[0] if params else 'void'
-            elif _base_type(iter_t) == 'str':
-                var_type = 'str'
+                var_type = params[0] if params else "void"
+            elif _base_type(iter_t) == "str":
+                var_type = "str"
             else:
-                var_type = 'void'
+                var_type = "void"
             if len(node.vars) > 1:
                 # Tuple destructuring in for loop
-                if var_type.startswith('('):
+                if var_type.startswith("("):
                     inner = var_type[1:-1]
                     elem_types = self._split_tuple_types(inner)
                     for i, vn in enumerate(node.vars):
                         if i < len(elem_types):
                             self.vars[-1][vn] = elem_types[i]
                         else:
-                            self.vars[-1][vn] = 'void'
+                            self.vars[-1][vn] = "void"
                 else:
                     for vn in node.vars:
                         self.vars[-1][vn] = var_type
@@ -4146,8 +5735,8 @@ class TypeChecker:
                 if len(p) >= 4 and p[3] is not None:
                     p[3]._type = ptype
             old_cls = self.in_class
-            if any(p[0] == 'self' for p in node.params):
-                self.in_class = self.in_class or 'Self'
+            if any(p[0] == "self" for p in node.params):
+                self.in_class = self.in_class or "Self"
             for s in node.body:
                 self._check_stmt(s)
             self.in_class = old_cls
@@ -4161,9 +5750,9 @@ class TypeChecker:
                 self._check_stmt(m)
             self.in_class = old_cls
         elif isinstance(node, ImportStmt):
-            mod_name = '.'.join(node.path)
+            mod_name = ".".join(node.path)
             if mod_name not in self.modules:
-                self._error(f"cannot find module `{mod_name}`", node, 'E0432')
+                self._error(f"cannot find module `{mod_name}`", node, "E0432")
         elif isinstance(node, ExprStmt):
             self._infer_type(node.expr)
         elif isinstance(node, DeferStmt):
@@ -4177,7 +5766,7 @@ class TypeChecker:
             self._pop_scope()
             self._unreachable = False
             self._push_scope()
-            self.vars[-1][node.catch_var] = 'str'
+            self.vars[-1][node.catch_var] = "str"
             for s in node.catch_body:
                 self._check_stmt(s)
             self._pop_scope()
@@ -4187,17 +5776,19 @@ class TypeChecker:
         elif isinstance(node, ContinueStmt):
             self._unreachable = True
 
+
 # ═══════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ═══════════════════════════════════════════════════════════════
 
+
 def fmt_error(src: str, path: str, msg: str, line: int = 0, col: int = 0) -> str:
     if line and col:
-        lines = src.split('\n')
+        lines = src.split("\n")
         if 1 <= line <= len(lines):
             source = lines[line - 1]
             sn = str(line)
-            pad = ' ' * len(sn)
+            pad = " " * len(sn)
             loc = f" --> {path}:{line}:{col}\n" if path else f" --> {line}:{col}\n"
             return (
                 f"\033[1;31merror\033[0m: {msg}\n"
@@ -4208,8 +5799,10 @@ def fmt_error(src: str, path: str, msg: str, line: int = 0, col: int = 0) -> str
             )
     return f"\033[1;31merror\033[0m: {msg}\n"
 
-def compile_source(src: str, path: str = '', check_only: bool = False,
-                   search_paths: PyList[str] = None) -> Tuple[str, PyList[Diagnostic]]:
+
+def compile_source(
+    src: str, path: str = "", check_only: bool = False, search_paths: PyList[str] = None
+) -> Tuple[str, PyList[Diagnostic]]:
     diags: PyList[Diagnostic] = []
     src_file = SourceFile(src, path)
     try:
@@ -4227,6 +5820,8 @@ def compile_source(src: str, path: str = '', check_only: bool = False,
 
         module_fns = {}
         module_classes = {}
+        module_consts = {}
+        module_aliases = {}
         module_cpps: PyList[str] = []
 
         for stmt in list(ast.stmts):
@@ -4234,12 +5829,14 @@ def compile_source(src: str, path: str = '', check_only: bool = False,
                 try:
                     mod_src, mod_path = resolver.resolve(stmt.path)
                 except ImportError as e:
-                    diags.append(Diagnostic(
-                        Severity.ERROR, str(e), spans.get(id(stmt)), code='E0432'
-                    ))
+                    diags.append(
+                        Diagnostic(
+                            Severity.ERROR, str(e), spans.get(id(stmt)), code="E0432"
+                        )
+                    )
                     continue
 
-                mod_name = '.'.join(stmt.path)
+                mod_name = ".".join(stmt.path)
 
                 # Parse module
                 mod_lexer = Lexer(mod_src)
@@ -4248,7 +5845,9 @@ def compile_source(src: str, path: str = '', check_only: bool = False,
                 mod_ast = mod_parser.parse()
 
                 # Type-check module independently
-                mod_checker = TypeChecker(mod_parser.get_spans(), SourceFile(mod_src, mod_path))
+                mod_checker = TypeChecker(
+                    mod_parser.get_spans(), SourceFile(mod_src, mod_path)
+                )
                 mod_checker.check(mod_ast)
                 diags.extend(mod_checker.diags)
 
@@ -4258,30 +5857,104 @@ def compile_source(src: str, path: str = '', check_only: bool = False,
                 # Collect module symbols (skip builtins and main)
                 fns = {}
                 for fn_name, sig in mod_checker.fns.items():
-                    if fn_name.startswith('_ox_') or fn_name in ('main', 'print', 'len', 'push', 'pop',
-                        'range', 'str', 'int', 'float', 'bool', 'sqrt', 'abs', 'pow',
-                        'panic', 'assert',
-                        'contains', 'read_file', 'read_lines', 'write_file', 'exec',
-                        'exit', 'to_int', 'to_float', 'str_get', 'str_sub', 'args',
-                        'is_digit', 'is_alpha', 'is_alnum', 'str_contains',
-                        'str_split', 'str_trim', 'str_trim_start', 'str_trim_end',
-                        'str_replace', 'str_replace_all', 'str_join',
-                        'to_upper', 'to_lower',
-                        'starts_with', 'ends_with',
-                        'str_repeat', 'str_reverse', 'str_find',
-                        'map_contains', 'map_get', 'map_set',
-                        'list_insert', 'list_remove',
-                        'fs_exists', 'fs_is_file', 'fs_is_dir', 'fs_mkdir',
-                        'fs_list_dir', 'fs_remove', 'fs_rename', 'fs_copy', 'fs_cwd',
-                        '_ox_math_zeros', '_ox_math_ones', '_ox_math_linspace', '_ox_math_arange',
-                        '_ox_math_dot', '_ox_math_matmul', '_ox_math_transpose',
-                        '_ox_math_norm', '_ox_math_inv', '_ox_math_det', '_ox_math_solve',
-                        '_ox_math_sin', '_ox_math_cos', '_ox_math_tan',
-                        '_ox_math_sqrt', '_ox_math_abs', '_ox_math_exp', '_ox_math_log',
-                        '_ox_math_floor', '_ox_math_ceil',
-                        '_ox_math_add', '_ox_math_sub', '_ox_math_mul', '_ox_math_div',
-                        '_ox_math_sum', '_ox_math_mean', '_ox_math_min', '_ox_math_max',
-                        '_ox_math_reshape'):
+                    if fn_name.startswith("_ox_") or fn_name in (
+                        "main",
+                        "print",
+                        "len",
+                        "push",
+                        "pop",
+                        "range",
+                        "str",
+                        "int",
+                        "long",
+                        "float",
+                        "bool",
+                        "panic",
+                        "assert",
+                        "chr",
+                        "ord",
+                        "zip",
+                        "isinstance",
+                        "contains",
+                        "read_file",
+                        "read_lines",
+                        "write_file",
+                        "exec",
+                        "exit",
+                        "to_int",
+                        "to_float",
+                        "parse_int",
+                        "str_get",
+                        "str_sub",
+                        "args",
+                        "is_digit",
+                        "is_alpha",
+                        "is_alnum",
+                        "str_contains",
+                        "str_split",
+                        "str_trim",
+                        "str_trim_start",
+                        "str_trim_end",
+                        "str_replace",
+                        "str_replace_all",
+                        "str_join",
+                        "to_upper",
+                        "to_lower",
+                        "starts_with",
+                        "ends_with",
+                        "str_repeat",
+                        "str_reverse",
+                        "str_find",
+                        "str_count",
+                        "map_contains",
+                        "map_get",
+                        "map_set",
+                        "map_keys",
+                        "map_values",
+                        "map_items",
+                        "list_insert",
+                        "list_remove",
+                        "_ox_repeat",
+                        "_ox_count",
+                        "fs_exists",
+                        "fs_is_file",
+                        "fs_is_dir",
+                        "fs_mkdir",
+                        "fs_list_dir",
+                        "fs_remove",
+                        "fs_rename",
+                        "fs_copy",
+                        "fs_cwd",
+                        "_ox_math_zeros",
+                        "_ox_math_ones",
+                        "_ox_math_linspace",
+                        "_ox_math_arange",
+                        "_ox_math_dot",
+                        "_ox_math_matmul",
+                        "_ox_math_transpose",
+                        "_ox_math_norm",
+                        "_ox_math_inv",
+                        "_ox_math_det",
+                        "_ox_math_solve",
+                        "_ox_math_sin",
+                        "_ox_math_cos",
+                        "_ox_math_tan",
+                        "_ox_math_sqrt",
+                        "_ox_math_abs",
+                        "_ox_math_exp",
+                        "_ox_math_log",
+                        "_ox_math_floor",
+                        "_ox_math_ceil",
+                        "_ox_math_add",
+                        "_ox_math_sub",
+                        "_ox_math_mul",
+                        "_ox_math_div",
+                        "_ox_math_sum",
+                        "_ox_math_mean",
+                        "_ox_math_min",
+                        "_ox_math_max",
+                        "_ox_math_reshape",
+                    ):
                         continue
                     fns[fn_name] = sig
                 if fns:
@@ -4289,86 +5962,132 @@ def compile_source(src: str, path: str = '', check_only: bool = False,
 
                 classes = {}
                 for cls_name, cls_def in mod_checker.classes.items():
-                    if cls_name.startswith('_ox_'):
+                    if cls_name.startswith("_ox_"):
                         continue
                     classes[cls_name] = cls_def
                 if classes:
                     module_classes[mod_name] = classes
+
+                # Collect module-level pub constants: pub let X: T = v / pub var X
+                consts = {}
+                for s in mod_ast.stmts:
+                    if isinstance(s, VarDecl) and s.pub:
+                        consts[s.name] = s.type_ann or getattr(
+                            s.value, "_type", None
+                        ) or "void"
+                if consts:
+                    module_consts[mod_name] = consts
+
+                # Register alias so `import mod as x` resolves x.fn() / x.CONST
+                if stmt.alias:
+                    module_aliases[stmt.alias] = mod_name
+                    if fns:
+                        module_fns[stmt.alias] = fns
+                    if classes:
+                        module_classes[stmt.alias] = classes
+                    if consts:
+                        module_consts[stmt.alias] = consts
 
                 # Generate C++ for module (inside namespace, no runtime header)
                 mod_cgen = CodeGen(module_namespace=f"_oxm_{mod_name}")
                 module_cpps.append(mod_cgen.generate(mod_ast, include_runtime=False))
 
         # ── Type checking (with module symbols) ──
-        checker = TypeChecker(spans, src_file, module_fns=module_fns, module_classes=module_classes)
+        checker = TypeChecker(
+            spans,
+            src_file,
+            module_fns=module_fns,
+            module_classes=module_classes,
+            module_consts=module_consts,
+        )
         checker.check(ast)
         diags.extend(checker.diags)
 
         if check_only or any(d.severity == Severity.ERROR for d in diags):
-            return '', diags
+            return "", diags
 
         # ── Codegen ──
-        cgen = CodeGen(modules=set(module_fns.keys()))
+        cgen = CodeGen(
+            modules=set(module_fns.keys()), module_consts=module_consts,
+            module_aliases=module_aliases,
+        )
         main_cpp = cgen.generate(ast)
 
         # Assemble final C++: runtime is in main_cpp, module cpp between runtime and user code
         # Find the user code marker and insert module code there
         # Insert module C++ code between the runtime header and the user code
         if module_cpps:
-            module_block = '\n'.join(module_cpps)
+            module_block = "\n".join(module_cpps)
             # main_cpp ends with the user-code section (the "// import ..." comment + main function)
             # Find the split between the RUNTIME header and the user's main code
-            user_start = main_cpp.find('// import')
+            user_start = main_cpp.find("// import")
             if user_start == -1:
-                user_start = main_cpp.find('int main(')
+                user_start = main_cpp.find("int main(")
             if user_start != -1:
-                cpp = main_cpp[:user_start] + '\n// ── Module Code ──────────────────────────────────\n' + module_block + '\n\n' + main_cpp[user_start:]
+                cpp = (
+                    main_cpp[:user_start]
+                    + "\n// ── Module Code ──────────────────────────────────\n"
+                    + module_block
+                    + "\n\n"
+                    + main_cpp[user_start:]
+                )
             else:
                 cpp = main_cpp
         else:
             cpp = main_cpp
         return cpp, diags
     except (LexError, ParseError) as e:
-        line = getattr(e, 'line', 0)
-        col = getattr(e, 'col', 0)
+        line = getattr(e, "line", 0)
+        col = getattr(e, "col", 0)
         span = None
         if line and col:
             offset = 0
             for _ in range(line - 1):
-                offset = src.find('\n', offset) + 1
+                offset = src.find("\n", offset) + 1
                 if offset == 0:
                     break
-            span = Span(offset, offset + 1, line, col, line, col + 1) if offset else None
-        diags.append(Diagnostic(
-            Severity.ERROR, e.args[0], span, code='E0001'
-        ))
-        return '', diags
+            span = (
+                Span(offset, offset + 1, line, col, line, col + 1) if offset else None
+            )
+        diags.append(Diagnostic(Severity.ERROR, e.args[0], span, code="E0001"))
+        return "", diags
 
 
 def main():
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     import argparse, subprocess, os, shlex
-    p = argparse.ArgumentParser(description='Oxybelis → C++ transpiler')
-    p.add_argument('source', help='Source file (.ox)')
-    p.add_argument('-o', '--output', help='Emit C++ to FILE and stop')
-    p.add_argument('-S', '--emit-cpp', action='store_true',
-                   help='Print C++ to stdout (for piping)')
-    p.add_argument('--cc', default='g++',
-                   help='C++ compiler command (default: g++)')
-    p.add_argument('--cflags', default='-O3 -std=c++20',
-                   help='C++ compiler flags (default: -O3 -std=c++20)')
-    p.add_argument('--check', action='store_true',
-                   help='Type-check only, no code generation')
-    p.add_argument('--fmt', action='store_true',
-                   help='Format source code in-place')
-    p.add_argument('--highlight', action='store_true',
-                   help='Print syntax-highlighted source and exit')
-    p.add_argument('--ox-path', action='append', default=[],
-                   help='Additional search path for module imports')
+
+    p = argparse.ArgumentParser(description="Oxybelis → C++ transpiler")
+    p.add_argument("source", help="Source file (.ox)")
+    p.add_argument("-o", "--output", help="Emit C++ to FILE and stop")
+    p.add_argument(
+        "-S", "--emit-cpp", action="store_true", help="Print C++ to stdout (for piping)"
+    )
+    p.add_argument("--cc", default="g++", help="C++ compiler command (default: g++)")
+    p.add_argument(
+        "--cflags",
+        default="-O3 -std=c++20",
+        help="C++ compiler flags (default: -O3 -std=c++20)",
+    )
+    p.add_argument(
+        "--check", action="store_true", help="Type-check only, no code generation"
+    )
+    p.add_argument("--fmt", action="store_true", help="Format source code in-place")
+    p.add_argument(
+        "--highlight",
+        action="store_true",
+        help="Print syntax-highlighted source and exit",
+    )
+    p.add_argument(
+        "--ox-path",
+        action="append",
+        default=[],
+        help="Additional search path for module imports",
+    )
     args = p.parse_args()
 
-    with open(args.source, encoding='utf-8') as f:
+    with open(args.source, encoding="utf-8") as f:
         src = f.read()
 
     if args.highlight:
@@ -4377,9 +6096,10 @@ def main():
 
     if args.fmt:
         from ox_fmt import format_source
+
         formatted = format_source(src)
-        trimmed_src = src.rstrip('\n')
-        trimmed_fmt = formatted.rstrip('\n')
+        trimmed_src = src.rstrip("\n")
+        trimmed_fmt = formatted.rstrip("\n")
         if args.check:
             if trimmed_src != trimmed_fmt:
                 print(f"\033[31m✗ {args.source} – not formatted\033[0m")
@@ -4389,12 +6109,14 @@ def main():
         if trimmed_src == trimmed_fmt:
             print(f"\033[32m✓ {args.source} – already formatted\033[0m")
             return
-        with open(args.source, 'w', encoding='utf-8') as f:
+        with open(args.source, "w", encoding="utf-8") as f:
             f.write(formatted)
         print(f"\033[32m✓ {args.source} – formatted\033[0m")
         return
 
-    cpp, diags = compile_source(src, args.source, check_only=args.check, search_paths=args.ox_path)
+    cpp, diags = compile_source(
+        src, args.source, check_only=args.check, search_paths=args.ox_path
+    )
 
     src_file = SourceFile(src, args.source)
     if diags:
@@ -4408,38 +6130,58 @@ def main():
         return
 
     if args.output:
-        with open(args.output, 'w', encoding='utf-8') as f: f.write(cpp)
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(cpp)
         print(f"\033[32m✓ {args.source} → {args.output}\033[0m")
     elif args.emit_cpp:
         print(cpp)
     else:
         base = os.path.splitext(args.source)[0]
-        cpp_file = base + '.cpp'
-        exe_file = base + '.exe'
-        with open(cpp_file, 'w', encoding='utf-8') as f:
+        cpp_file = base + ".cpp"
+        exe_file = base + ".exe"
+        with open(cpp_file, "w", encoding="utf-8") as f:
             f.write(cpp)
         try:
             # Auto-detect NumCpp include path
             numcpp_dirs = [
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'NumCpp', 'include'),
-                os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'NumCpp', 'include'),
-                os.path.join(os.getcwd(), 'NumCpp', 'include'),
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)), "NumCpp", "include"
+                ),
+                os.path.join(
+                    os.path.dirname(os.path.abspath(sys.argv[0])), "NumCpp", "include"
+                ),
+                os.path.join(os.getcwd(), "NumCpp", "include"),
             ]
             extra_flags = []
             for d in numcpp_dirs:
                 if os.path.isdir(d):
-                    extra_flags = [f'-I{d}']
+                    extra_flags = [f"-I{d}"]
                     break
-            mconsole = ['-mconsole'] if sys.platform == 'win32' else []
-            cflags_list = shlex.split(args.cflags) if hasattr(shlex, 'split') else args.cflags.split()
-            subprocess.run([args.cc] + extra_flags + cflags_list + mconsole +
-                           [cpp_file, '-o', exe_file], check=True)
+            mconsole = ["-mconsole"] if sys.platform == "win32" else []
+            win_libs = ["-lwinhttp"] if sys.platform == "win32" else []
+            cflags_list = (
+                shlex.split(args.cflags)
+                if hasattr(shlex, "split")
+                else args.cflags.split()
+            )
+            subprocess.run(
+                [args.cc]
+                + extra_flags
+                + cflags_list
+                + mconsole
+                + [cpp_file, "-o", exe_file]
+                + win_libs,
+                check=True,
+            )
             print(f"\033[32m✓ {args.source} → {exe_file}\033[0m")
-            subprocess.run([exe_file])
+            exe_dir = os.path.dirname(os.path.abspath(args.source))
+            subprocess.run([exe_file], cwd=exe_dir)
         except subprocess.CalledProcessError:
-            print(f"\033[31m✗ Compilation failed (see {cpp_file})\033[0m",
-                  file=sys.stderr)
+            print(
+                f"\033[31m✗ Compilation failed (see {cpp_file})\033[0m", file=sys.stderr
+            )
             sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
